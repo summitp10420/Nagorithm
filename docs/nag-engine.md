@@ -106,6 +106,21 @@ rather than a flat score per hour, so it scales with the individual's own reserv
 threshold instead of asserting an absolute number that means different things for different
 people. Estimated sessions are flagged as estimates everywhere they appear.
 
+**Swimming never uses sampled heart rate at all.** A watch that cannot read underwater still
+emits the occasional stray value, and those few readings are noise rather than a
+measurement. Trusting them is worse than having none: the first device run scored a
+21-minute swim at 5 HRSS from four stray samples, against roughly 22 for the identical swims
+either side of it that had no samples to mislead the calculation. Proper swim heart rate is
+a hardware problem, and hardcore swimmers are not who this app is for.
+
+### Partial coverage
+
+The same failure lurks in every sport, because samples only bill the time between
+themselves. A chest strap that dies halfway through a ride would charge the second half at
+nothing. So coverage is measured, and any stretch the samples do not span is filled at the
+sport's assumed intensity. A session more than 90% covered counts as measured; below that it
+is marked partial and says so.
+
 ### Inputs
 
 - **Max HR** — the input that matters most, because threshold is derived from it, so an

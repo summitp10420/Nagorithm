@@ -36,6 +36,7 @@ fun MainScreen(
     onCheck: () -> Unit,
     onSync: () -> Unit,
     onSaveProfile: (Int, Sex, Int?, Int?, Int?) -> Unit,
+    onRecaptureBaseline: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val profile = (profileState as? ProfileUiState.Loaded)?.profile
@@ -83,6 +84,7 @@ fun MainScreen(
                 storedActivities = storedActivities,
                 requiredPermissions = requiredPermissions,
                 onCheck = onCheck,
+                onRecaptureBaseline = onRecaptureBaseline,
             )
         }
     }

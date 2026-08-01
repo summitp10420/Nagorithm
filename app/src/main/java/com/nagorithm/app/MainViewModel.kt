@@ -117,6 +117,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Only valid while the baseline is young enough that re-taking it as of today loses nothing. */
+    fun recaptureBaseline() {
+        viewModelScope.launch {
+            repository.clearBaseline()
+            sync()
+        }
+    }
+
     fun saveProfile(
         age: Int,
         sex: Sex,

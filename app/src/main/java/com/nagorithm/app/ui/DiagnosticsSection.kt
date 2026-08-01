@@ -41,6 +41,7 @@ fun DiagnosticsSection(
     storedActivities: List<StoredActivity>,
     requiredPermissions: Set<String>,
     onCheck: () -> Unit,
+    onRecaptureBaseline: () -> Unit,
 ) {
     val context = LocalContext.current
     var expanded by rememberSaveable { mutableStateOf(false) }
@@ -104,6 +105,16 @@ fun DiagnosticsSection(
             color = MaterialTheme.colorScheme.error,
         )
     }
+
+    OutlinedButton(onClick = onRecaptureBaseline, modifier = Modifier.fillMaxWidth()) {
+        Text("Recapture baseline from today")
+    }
+    Text(
+        text = "Discards the onboarding snapshot and re-takes it as of now. Only sensible while " +
+            "the baseline is new — later it is the reference every long-term signal depends on.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 
     (syncState as? SyncUiState.Completed)?.let {
         ScanDiagnosticsCard(it.result.diagnostics, it.windowDays)

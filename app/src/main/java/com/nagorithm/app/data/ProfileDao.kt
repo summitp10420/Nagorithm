@@ -50,4 +50,21 @@ interface ProfileDao {
         capabilityUnit: String,
         userId: String = LOCAL_USER_ID,
     )
+
+    /**
+     * Escape hatch for when the baseline was captured from arithmetic that later turned out to be
+     * wrong. Not a routine operation: clearing it discards the reference point that long-term
+     * progress is measured against, and it can only be re-taken as of today.
+     */
+    @Query(
+        """
+        UPDATE profile SET
+            baselineLoad28Day = NULL,
+            baselineCapabilityName = NULL,
+            baselineCapabilityValue = NULL,
+            baselineCapabilityUnit = NULL
+        WHERE userId = :userId
+        """,
+    )
+    suspend fun clearBaseline(userId: String = LOCAL_USER_ID)
 }

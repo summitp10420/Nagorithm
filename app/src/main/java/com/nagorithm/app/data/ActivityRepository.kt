@@ -34,6 +34,8 @@ class ActivityRepository(
 
     suspend fun saveProfile(profile: Profile) = profileDao.save(profile)
 
+    suspend fun clearBaseline() = profileDao.clearBaseline()
+
     suspend fun syncFromHealthConnect(from: Instant, to: Instant): SyncResult {
         val fetch = healthConnect.readAerobicSessions(from, to)
         val seenAt = Instant.now()
@@ -68,8 +70,8 @@ class ActivityRepository(
                 )
                 when {
                     load == null -> Unit
-                    load.isEstimated -> estimated++
-                    else -> measured++
+                    load.isFullyMeasured -> measured++
+                    else -> estimated++
                 }
                 activityDao.updateLoad(
                     recordId = activity.recordId,

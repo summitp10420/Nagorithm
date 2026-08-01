@@ -11,6 +11,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.nagorithm.app.data.LoadModel
 import com.nagorithm.app.data.StoredActivity
 
 @Composable
@@ -73,9 +74,13 @@ private fun StoredActivityCard(activity: StoredActivity) {
             if (load != null) {
                 DetailRow(
                     label = "Model",
-                    value = load.assumedReserve
-                        ?.let { "estimated at %.0f%% reserve".format(it * 100) }
-                        ?: "${activity.hrSampleCount} heart rate samples",
+                    value = when (load.model) {
+                        LoadModel.HRSS.name -> "${activity.hrSampleCount} heart rate samples"
+                        LoadModel.PARTIAL.name -> "${activity.hrSampleCount} samples, gaps filled " +
+                            "at %.0f%% reserve".format((load.assumedReserve ?: 0.0) * 100)
+                        else -> "estimated at %.0f%% reserve"
+                            .format((load.assumedReserve ?: 0.0) * 100)
+                    },
                 )
                 DetailRow(
                     label = "Scored with",

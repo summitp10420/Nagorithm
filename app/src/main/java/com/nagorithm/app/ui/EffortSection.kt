@@ -127,8 +127,8 @@ private fun WindowCard(title: String, window: LoadWindow) {
 
             if (window.estimatedCount > 0) {
                 Text(
-                    text = "${window.estimatedCount} session(s) had no usable heart rate and " +
-                        "were estimated from duration at an assumed intensity.",
+                    text = "${window.estimatedCount} session(s) were fully or partly estimated " +
+                        "from duration at an assumed intensity for the sport.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

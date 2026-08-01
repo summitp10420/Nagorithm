@@ -23,7 +23,8 @@ data class LoadWindow(
 
     val activityCount: Int get() = activities.size
 
-    val estimatedCount: Int get() = activities.count { it.load?.isEstimated == true }
+    /** Counts partly estimated sessions too — both are load the heart rate did not fully justify. */
+    val estimatedCount: Int get() = activities.count { it.load?.isFullyMeasured == false }
 
     val movingTime: Duration
         get() = activities.fold(Duration.ZERO) { acc, it -> acc + it.scoredDuration }

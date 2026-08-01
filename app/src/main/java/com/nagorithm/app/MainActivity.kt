@@ -33,6 +33,7 @@ class MainActivity : ComponentActivity() {
                     onCheck = viewModel::checkHealthConnect,
                     onSync = viewModel::sync,
                     onSaveProfile = viewModel::saveProfile,
+                    onRecaptureBaseline = viewModel::recaptureBaseline,
                 )
             }
         }

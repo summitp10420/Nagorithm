@@ -23,6 +23,9 @@ object HrssCalculator {
      */
     private val MAX_SAMPLE_GAP: Duration = Duration.ofSeconds(120)
 
+    /** Above this share of the session covered by samples, the reading is treated as complete. */
+    private const val FULL_COVERAGE = 0.9
+
     fun compute(
         samples: List<HeartRateSample>,
         duration: Duration?,
@@ -37,35 +40,57 @@ object HrssCalculator {
         val reference = 60.0 * weight(reserveFraction(threshold.toDouble(), resting, max), profile.sex)
         if (reference <= 0.0) return null
 
-        val measured = trimpOf(samples, resting, max, profile.sex)
-        if (measured != null) {
-            return LoadScore(
-                hrss = measured / reference * 100.0,
-                model = LoadModel.HRSS.name,
-                restingHr = resting,
-                maxHr = max,
-                thresholdHr = threshold,
-            )
+        val assumedReserve = assumedReserveWithoutHeartRate(sport)
+        val assumedPerMinute = weight(assumedReserve, profile.sex)
+
+        // A watch that cannot read heart rate underwater still emits the odd stray value. Those
+        // are noise, not a measurement, so swimming never takes the sampled path.
+        val measured = if (sport == SportCategory.SWIMMING) {
+            null
+        } else {
+            measure(samples, resting, max, profile.sex)
         }
 
-        val minutes = duration?.seconds?.toDouble()?.div(60.0) ?: return null
-        val assumed = assumedReserveWithoutHeartRate(sport)
-        return LoadScore(
-            hrss = minutes * weight(assumed, profile.sex) / reference * 100.0,
-            model = LoadModel.ESTIMATED.name,
+        fun score(hrss: Double, model: LoadModel, assumed: Double?) = LoadScore(
+            hrss = hrss,
+            model = model.name,
             restingHr = resting,
             maxHr = max,
             thresholdHr = threshold,
             assumedReserve = assumed,
         )
+
+        if (measured == null) {
+            val minutes = duration?.seconds?.toDouble()?.div(60.0) ?: return null
+            return score(
+                hrss = minutes * assumedPerMinute / reference * 100.0,
+                model = LoadModel.ESTIMATED,
+                assumed = assumedReserve,
+            )
+        }
+
+        // Samples only bill the time between them, so a session with a handful of stray readings
+        // would otherwise be charged at nothing for the stretches they do not span. Fill the gap
+        // at the sport's assumed intensity instead of silently under-scoring the session.
+        val sessionSeconds = duration?.seconds ?: measured.coveredSeconds
+        val uncoveredSeconds = (sessionSeconds - measured.coveredSeconds).coerceAtLeast(0L)
+        val complete = uncoveredSeconds <= sessionSeconds * (1.0 - FULL_COVERAGE)
+
+        return score(
+            hrss = (measured.trimp + uncoveredSeconds / 60.0 * assumedPerMinute) / reference * 100.0,
+            model = if (complete) LoadModel.HRSS else LoadModel.PARTIAL,
+            assumed = assumedReserve.takeUnless { complete },
+        )
     }
 
-    private fun trimpOf(
+    private class Measurement(val trimp: Double, val coveredSeconds: Long)
+
+    private fun measure(
         samples: List<HeartRateSample>,
         restingHr: Int,
         maxHr: Int,
         sex: Sex,
-    ): Double? {
+    ): Measurement? {
         if (samples.size < 2) return null
         val sorted = samples.sortedBy { it.time }
 
@@ -80,7 +105,7 @@ object HrssCalculator {
             val minutes = durations[index] / 60.0
             trimp += minutes * weight(reserveFraction(sample.bpm.toDouble(), restingHr, maxHr), sex)
         }
-        return trimp.takeIf { it > 0.0 }
+        return Measurement(trimp, durations.sum()).takeIf { trimp > 0.0 }
     }
 
     private fun reserveFraction(bpm: Double, restingHr: Int, maxHr: Int): Double =
