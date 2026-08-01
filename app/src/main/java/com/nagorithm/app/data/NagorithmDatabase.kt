@@ -8,7 +8,7 @@ import androidx.room.RoomDatabase
 @Database(
     entities = [StoredActivity::class, Profile::class],
     version = 3,
-    exportSchema = false,
+    exportSchema = true,
 )
 abstract class NagorithmDatabase : RoomDatabase() {
 
@@ -27,9 +27,11 @@ abstract class NagorithmDatabase : RoomDatabase() {
                     NagorithmDatabase::class.java,
                     "nagorithm.db",
                 )
-                    // Acceptable while the schema is still moving and there are no real users.
-                    // Must become real migrations before anyone else installs this.
-                    .fallbackToDestructiveMigration(dropAllTables = true)
+                    // Versions 1 and 2 never left this machine and hold nothing worth keeping.
+                    // From 3 onward the data is real: activity history reaches back further than
+                    // Health Connect will re-serve, and the onboarding baseline is written once
+                    // and cannot be recomputed, so every later change needs a real migration.
+                    .fallbackToDestructiveMigrationFrom(dropAllTables = true, 1, 2)
                     .build()
                     .also { instance = it }
             }

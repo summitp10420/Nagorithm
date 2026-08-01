@@ -45,6 +45,13 @@ kotlin {
     }
 }
 
+ksp {
+    // Committed schema JSON is what lets Room generate and verify migrations. Without it the
+    // only option is dropping the database, which would erase the onboarding baseline — a
+    // snapshot of past load that no amount of re-reading Health Connect can reconstruct.
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
 
