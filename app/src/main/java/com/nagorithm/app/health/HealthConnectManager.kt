@@ -8,6 +8,7 @@ import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.DistanceRecord
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.RestingHeartRateRecord
 import androidx.health.connect.client.records.SpeedRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.request.AggregateRequest
@@ -27,6 +28,7 @@ class HealthConnectManager(private val context: Context) {
         HealthPermission.getReadPermission(ExerciseSessionRecord::class),
         HealthPermission.getReadPermission(DistanceRecord::class),
         HealthPermission.getReadPermission(HeartRateRecord::class),
+        HealthPermission.getReadPermission(RestingHeartRateRecord::class),
         HealthPermission.getReadPermission(SpeedRecord::class),
         HealthPermission.getReadPermission(StepsRecord::class),
     )
@@ -52,25 +54,24 @@ class HealthConnectManager(private val context: Context) {
     suspend fun grantedPermissions(): Set<String> =
         clientOrNull()?.permissionController?.getGrantedPermissions().orEmpty()
 
-    /** Cycling sessions in the window, newest first, plus a debug scan of everything else. */
-    suspend fun readCyclingSessions(from: Instant, to: Instant): RideFetchResult {
+    /** Aerobic sessions in the window, newest first, plus a debug scan of everything present. */
+    suspend fun readAerobicSessions(from: Instant, to: Instant): ActivityFetchResult {
         val client = clientOrNull()
-            ?: return RideFetchResult(
+            ?: return ActivityFetchResult(
                 emptyList(),
-                ExerciseScanDiagnostics(0, emptyMap(), emptySet()),
+                ExerciseScanDiagnostics(0, 0, emptyMap(), emptySet()),
             )
 
         val sessions = readSessions(client, from, to)
+        val aerobic = sessions.filter { sportCategoryOf(it.exerciseType) != null }
 
-        val rides = sessions
-            .filter { it.exerciseType in CYCLING_EXERCISE_TYPES }
-            .sortedByDescending { it.startTime }
-            .map { summarize(client, it) }
-
-        return RideFetchResult(
-            rides = rides,
+        return ActivityFetchResult(
+            activities = aerobic
+                .sortedByDescending { it.startTime }
+                .map { summarize(client, it) },
             diagnostics = ExerciseScanDiagnostics(
                 sessionsInWindow = sessions.size,
+                aerobicSessions = aerobic.size,
                 typeCounts = sessions
                     .groupingBy { exerciseTypeName(it.exerciseType) }
                     .eachCount(),
@@ -105,12 +106,12 @@ class HealthConnectManager(private val context: Context) {
     /**
      * Distance and heart rate live in separate record types, so they have to be aggregated over
      * the session's window. The data origin filter keeps a second app's overlapping recording of
-     * the same ride from being counted twice.
+     * the same session from being counted twice.
      */
     private suspend fun summarize(
         client: HealthConnectClient,
         session: ExerciseSessionRecord,
-    ): RideSummary {
+    ): ActivitySummary {
         val aggregated = runCatching {
             client.aggregate(
                 AggregateRequest(
@@ -125,43 +126,68 @@ class HealthConnectManager(private val context: Context) {
             )
         }.getOrNull()
 
-        return RideSummary(
+        return ActivitySummary(
             recordId = session.metadata.id,
             startTime = session.startTime,
             endTime = session.endTime,
             startZoneOffset = session.startZoneOffset,
             title = session.title,
-            isStationary = session.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_BIKING_STATIONARY,
+            exerciseType = session.exerciseType,
+            sport = sportCategoryOf(session.exerciseType) ?: SportCategory.OTHER,
+            isIndoor = isIndoorType(session.exerciseType),
             activeDuration = aggregated?.get(ExerciseSessionRecord.EXERCISE_DURATION_TOTAL),
             distanceMeters = aggregated?.get(DistanceRecord.DISTANCE_TOTAL)?.inMeters,
             averageHeartRateBpm = aggregated?.get(HeartRateRecord.BPM_AVG),
             sourcePackage = session.metadata.dataOrigin.packageName,
+            heartRateSamples = readHeartRateSamples(client, session),
         )
+    }
+
+    private suspend fun readHeartRateSamples(
+        client: HealthConnectClient,
+        session: ExerciseSessionRecord,
+    ): List<HeartRateSample> = runCatching {
+        val samples = mutableListOf<HeartRateSample>()
+        var pageToken: String? = null
+        do {
+            val response = client.readRecords(
+                ReadRecordsRequest(
+                    recordType = HeartRateRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(session.startTime, session.endTime),
+                    dataOriginFilter = setOf(session.metadata.dataOrigin),
+                    pageToken = pageToken,
+                ),
+            )
+            response.records.forEach { record ->
+                record.samples.forEach { samples += HeartRateSample(it.time, it.beatsPerMinute) }
+            }
+            pageToken = response.pageToken
+        } while (!pageToken.isNullOrEmpty())
+        samples
+    }.getOrDefault(emptyList())
+
+    /**
+     * Median rather than latest. Resting HR sits in the denominator of every load score, so a
+     * single bad night's reading would skew the whole history.
+     */
+    suspend fun readRestingHeartRate(from: Instant, to: Instant): Int? {
+        val client = clientOrNull() ?: return null
+        val values = runCatching {
+            client.readRecords(
+                ReadRecordsRequest(
+                    recordType = RestingHeartRateRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(from, to),
+                ),
+            ).records.map { it.beatsPerMinute }
+        }.getOrDefault(emptyList())
+
+        if (values.isEmpty()) return null
+        return values.sorted()[values.size / 2].toInt()
     }
 
     companion object {
         const val PROVIDER_PACKAGE = "com.google.android.apps.healthdata"
 
-        private val CYCLING_EXERCISE_TYPES = setOf(
-            ExerciseSessionRecord.EXERCISE_TYPE_BIKING,
-            ExerciseSessionRecord.EXERCISE_TYPE_BIKING_STATIONARY,
-        )
-
-        private fun exerciseTypeName(type: Int): String = when (type) {
-            ExerciseSessionRecord.EXERCISE_TYPE_BIKING -> "BIKING"
-            ExerciseSessionRecord.EXERCISE_TYPE_BIKING_STATIONARY -> "BIKING_STATIONARY"
-            ExerciseSessionRecord.EXERCISE_TYPE_RUNNING -> "RUNNING"
-            ExerciseSessionRecord.EXERCISE_TYPE_RUNNING_TREADMILL -> "RUNNING_TREADMILL"
-            ExerciseSessionRecord.EXERCISE_TYPE_WALKING -> "WALKING"
-            ExerciseSessionRecord.EXERCISE_TYPE_HIKING -> "HIKING"
-            ExerciseSessionRecord.EXERCISE_TYPE_ELLIPTICAL -> "ELLIPTICAL"
-            ExerciseSessionRecord.EXERCISE_TYPE_ROWING_MACHINE -> "ROWING_MACHINE"
-            ExerciseSessionRecord.EXERCISE_TYPE_WEIGHTLIFTING -> "WEIGHTLIFTING"
-            ExerciseSessionRecord.EXERCISE_TYPE_STRENGTH_TRAINING -> "STRENGTH_TRAINING"
-            ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_POOL -> "SWIMMING_POOL"
-            ExerciseSessionRecord.EXERCISE_TYPE_OTHER_WORKOUT -> "OTHER_WORKOUT"
-            else -> "TYPE_$type"
-        }
         private const val PLAY_STORE_PACKAGE = "com.android.vending"
 
         /**

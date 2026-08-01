@@ -6,13 +6,15 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [StoredActivity::class],
-    version = 1,
+    entities = [StoredActivity::class, Profile::class],
+    version = 3,
     exportSchema = false,
 )
 abstract class NagorithmDatabase : RoomDatabase() {
 
     abstract fun activityDao(): ActivityDao
+
+    abstract fun profileDao(): ProfileDao
 
     companion object {
         @Volatile

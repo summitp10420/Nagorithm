@@ -5,14 +5,18 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.nagorithm.app.data.ActivityRepository
 import com.nagorithm.app.data.NagorithmDatabase
+import com.nagorithm.app.data.Profile
+import com.nagorithm.app.data.Sex
 import com.nagorithm.app.data.StoredActivity
 import com.nagorithm.app.data.SyncResult
+import com.nagorithm.app.effort.EffortSnapshot
 import com.nagorithm.app.health.HealthConnectAvailability
 import com.nagorithm.app.health.HealthConnectManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -25,6 +29,16 @@ data class HealthConnectUiState(
     val grantedPermissions: Set<String> = emptySet(),
     val errorMessage: String? = null,
 )
+
+/**
+ * Distinguishes "no profile saved" from "not read yet", so first launch does not flash the
+ * setup form at a user who already has one.
+ */
+sealed interface ProfileUiState {
+    data object Loading : ProfileUiState
+
+    data class Loaded(val profile: Profile?) : ProfileUiState
+}
 
 sealed interface SyncUiState {
     data object Idle : SyncUiState
@@ -40,10 +54,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val healthConnect = HealthConnectManager(application)
 
-    private val repository = ActivityRepository(
-        healthConnect = healthConnect,
-        activityDao = NagorithmDatabase.get(application).activityDao(),
-    )
+    private val repository = NagorithmDatabase.get(application).let { db ->
+        ActivityRepository(
+            healthConnect = healthConnect,
+            activityDao = db.activityDao(),
+            profileDao = db.profileDao(),
+        )
+    }
 
     val requiredPermissions: Set<String> = healthConnect.requiredPermissions
 
@@ -54,11 +71,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val syncState: StateFlow<SyncUiState> = _syncState.asStateFlow()
 
     val storedActivities: StateFlow<List<StoredActivity>> = repository.observeActivities()
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5_000),
-            initialValue = emptyList(),
-        )
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val profileState: StateFlow<ProfileUiState> = repository.observeProfile()
+        .map { ProfileUiState.Loaded(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ProfileUiState.Loading)
+
+    val effort: StateFlow<EffortSnapshot?> = repository.observeActivities()
+        .map { EffortSnapshot.from(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    init {
+        // The diagnostics panel that used to host this button is collapsed by default now.
+        checkHealthConnect()
+    }
 
     fun checkHealthConnect() {
         viewModelScope.launch {
@@ -88,6 +114,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 onSuccess = { SyncUiState.Completed(it, FETCH_WINDOW_DAYS) },
                 onFailure = { SyncUiState.Failed(it.message ?: it::class.java.simpleName) },
             )
+        }
+    }
+
+    fun saveProfile(
+        age: Int,
+        sex: Sex,
+        restingHrOverride: Int?,
+        maxHrOverride: Int?,
+        thresholdHrOverride: Int?,
+    ) {
+        viewModelScope.launch {
+            val existing = repository.currentProfile()
+            repository.saveProfile(
+                existing?.copy(
+                    age = age,
+                    sex = sex,
+                    restingHrOverride = restingHrOverride,
+                    maxHrOverride = maxHrOverride,
+                    thresholdHrOverride = thresholdHrOverride,
+                ) ?: Profile(
+                    age = age,
+                    sex = sex,
+                    restingHrOverride = restingHrOverride,
+                    maxHrOverride = maxHrOverride,
+                    thresholdHrOverride = thresholdHrOverride,
+                    onboardedAtEpochMillis = Instant.now().toEpochMilli(),
+                ),
+            )
+            // Loads are derived from these values, so they are stale the moment they change.
+            sync()
         }
     }
 
