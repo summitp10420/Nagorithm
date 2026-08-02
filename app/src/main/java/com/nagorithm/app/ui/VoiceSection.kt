@@ -2,6 +2,8 @@ package com.nagorithm.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -24,6 +26,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.nagorithm.app.verdict.NagTone
+import com.nagorithm.app.verdict.VoiceFamily
 
 /**
  * Where the nag gets its voice. Deliberately separate from the effort numbers, because nothing
@@ -63,15 +66,25 @@ fun VoiceSection(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ToneChips(selected: NagTone, onSelect: (NagTone) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        NagTone.entries.forEach { tone ->
-            FilterChip(
-                selected = tone == selected,
-                onClick = { onSelect(tone) },
-                label = { Text(tone.label) },
-            )
+    // Seven of these will not sit on one line of a phone, and a row that silently clips is a
+    // character the user never discovers exists.
+    VoiceFamily.entries.forEach { family ->
+        Text(
+            text = if (family == VoiceFamily.PLAIN) "Registers" else "Characters",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            NagTone.of(family).forEach { tone ->
+                FilterChip(
+                    selected = tone == selected,
+                    onClick = { onSelect(tone) },
+                    label = { Text(tone.label) },
+                )
+            }
         }
     }
 }

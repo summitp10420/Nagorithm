@@ -1,13 +1,7 @@
 package com.nagorithm.app.verdict
 
 import com.nagorithm.app.data.GoalDimension
-import com.nagorithm.app.effort.CurveComparison
-import com.nagorithm.app.format.formatClock
-import com.nagorithm.app.format.formatDistanceShort
-import com.nagorithm.app.format.formatGap
 import java.time.ZoneId
-import kotlin.math.abs
-import kotlin.math.roundToInt
 
 enum class NagSource { TEMPLATE, MODEL }
 
@@ -16,9 +10,11 @@ data class Nag(val headline: String, val body: String, val source: NagSource)
 /**
  * The fallback voice, and the one that has to carry the app before an API key exists.
  *
- * Templates are held to the same rule as the model: they may only say what the verdict already
- * decided. Numbers are quoted from the verdict rather than recomputed, so the words and the
- * "Why this nag?" audit can never disagree.
+ * Held to the same rule as the model: it may only say what the verdict already decided, and it says
+ * it without a single digit. The figures still exist and are still exact — they are in the
+ * "Why this nag?" audit, computed once and quoted nowhere else. But a person deciding whether to
+ * train today is not helped by a ratio, and an app that recites one has confused being precise with
+ * being useful.
  */
 object NagTemplates {
 
@@ -48,10 +44,10 @@ object NagTemplates {
         headline = "Not enough rope yet.",
         body = buildString {
             append(
-                "I have ${verdict.snapshot.chronic.activityCount} session(s) across " +
-                    "${verdict.snapshot.historySpanDays ?: 0} day(s). I can tell you what " +
-                    "happened, but not yet whether it means anything — trends need a few weeks " +
-                    "before they stop lying. ",
+                "I have ${Words.sessions(verdict.snapshot.chronic.activityCount)} to go on, " +
+                    "spread over ${Words.span(verdict.snapshot.historySpanDays)}. I can tell you " +
+                    "what happened, but not yet whether it means anything — trends need longer " +
+                    "than this before they stop lying. ",
             )
             append(goalLine(verdict))
         },
@@ -66,24 +62,27 @@ object NagTemplates {
             "Nothing new, and that is fine.",
         ),
         body = buildString {
-            append(daysLine(verdict))
+            append(daysLine(verdict)).append(' ')
             append(
-                " At ${verdict.snapshot.chronic.loadPerWeek.roundToInt()} HRSS a week that is " +
-                    "still inside the window where rest pays you back rather than costing you. ",
+                "For weeks as ${Words.weekly(verdict.snapshot.chronic.loadPerWeek)} as yours, " +
+                    "that is still inside the stretch where rest pays you back rather than " +
+                    "costing you. ",
             )
-            append(statusLine(verdict))
-            append(" ").append(goalLine(verdict))
+            append(statusLine(verdict)).append(' ')
+            append(goalLine(verdict))
         },
         source = NagSource.TEMPLATE,
     )
 
     private fun idle(verdict: Verdict, pick: Long): Nag {
-        val days = verdict.daysSinceLastActivity ?: 0L
-
         val headline = when (verdict.detraining) {
-            DetrainingBand.LOSING -> choose(pick, "You are losing it now.", "Day $days. Measurably.")
-            DetrainingBand.SOFT -> choose(pick, "Right — this is a rebuild.", "Day $days.")
-            else -> choose(pick, "Day $days. The rot starts here.", "This is where it slips.")
+            DetrainingBand.LOSING ->
+                choose(pick, "You are losing it now.", "This has gone on too long.")
+
+            DetrainingBand.SOFT ->
+                choose(pick, "Right — this is a rebuild.", "Long enough to be a restart.")
+
+            else -> choose(pick, "The rot starts here.", "This is where it slips.")
         }
 
         val physiology = when (verdict.detraining) {
@@ -92,8 +91,8 @@ object NagTemplates {
                     "physiology, and it does not care why you stopped."
 
             DetrainingBand.SOFT ->
-                "After $days days most of what you built has gone. Coming back is its own " +
-                    "project now, so make today small and boring rather than heroic."
+                "After this long most of what you built has gone. Coming back is its own project " +
+                    "now, so make today small and boring rather than heroic."
 
             else ->
                 "Nothing is lost yet, but this is exactly where a rest week quietly turns into a " +
@@ -105,7 +104,6 @@ object NagTemplates {
             body = buildString {
                 append(daysLine(verdict)).append(' ')
                 append(physiology).append(' ')
-                append(statusLine(verdict)).append(' ')
                 append(goalLine(verdict)).append(' ')
                 append(shove(pick))
             },
@@ -130,46 +128,31 @@ object NagTemplates {
     private fun progressing(verdict: Verdict): Nag {
         val curve = verdict.headline
         if (curve != null && curve.secondsFasterThanPredicted > 0 && curve.isMeaningful) {
-            return beatTheCurve(verdict, curve)
-        }
+            val sport = curve.activity.sport.label.lowercase()
 
-        val efficiency = verdict.efficiency ?: return steady(verdict, 0L)
-        return Nag(
-            headline = "More speed per heartbeat.",
-            body = buildString {
-                append(
-                    "Over the last 28 days your ${efficiency.key.sport.label.lowercase()} is " +
-                        "covering ${"%.1f".format(abs(efficiency.improvementFraction) * 100)}% " +
-                        "more ground per beat than the ${efficiency.priorCount} session(s) " +
-                        "before that. Same heart rate, more distance — that is aerobic fitness " +
-                        "rather than one good day. ",
-                )
-                append(statusLine(verdict)).append(' ')
-                append(goalLine(verdict))
-            },
-            source = NagSource.TEMPLATE,
-        )
-    }
+            // A thin curve may report what happened but not how good it was. Two points agree with
+            // any line drawn through them, and being caught overclaiming costs more than the
+            // compliment was worth.
+            val body = if (curve.isConfident) {
+                "That $sport came in ${Words.magnitude(curve.fractionFasterThanPredicted)} ahead " +
+                    "of what the curve through your own best efforts says you should manage — and " +
+                    "that curve was fitted without counting this one. Your own form did not " +
+                    "predict this. "
+            } else {
+                "That $sport came in ahead of what the rest of your history suggests. I will not " +
+                    "make more of it than that yet — there are only a couple of other efforts to " +
+                    "draw the line through, and two points will agree with anything. Do it again " +
+                    "and I can tell you whether it is a trend or a good day. "
+            }
 
-    private fun beatTheCurve(verdict: Verdict, curve: CurveComparison): Nag {
-        val sport = curve.activity.sport
-        val distance = formatDistanceShort(curve.activity.distanceMeters, sport)
-
-        // A thin curve is allowed to report what happened but not to put a number on how good it
-        // was. Quoting a percentage off two sessions is precision the data has not earned, and
-        // being caught inventing one costs more trust than the compliment was worth.
-        if (!curve.isConfident) {
             return Nag(
-                headline = "Quickest $distance you have logged.",
+                headline = if (curve.isConfident) {
+                    "Faster than your own form predicts."
+                } else {
+                    "Your quickest yet at that distance."
+                },
                 body = buildString {
-                    append(
-                        "That ${sport.label.lowercase()} came in at " +
-                            "${formatClock(curve.actualSeconds)}, ahead of what the rest of your " +
-                            "history suggests. I will not put a number on it yet — I have only " +
-                            "${curve.fit.sampleCount} other efforts to draw the line through, " +
-                            "and two points will agree with anything. Do it a couple more times " +
-                            "and I can tell you whether it is a trend or a good day. ",
-                    )
+                    append(body)
                     append(statusLine(verdict)).append(' ')
                     append(goalLine(verdict))
                 },
@@ -177,16 +160,15 @@ object NagTemplates {
             )
         }
 
+        val efficiency = verdict.efficiency ?: return steady(verdict, 0L)
         return Nag(
-            headline = "${formatGap(curve.secondsFasterThanPredicted)} quicker than you should be.",
+            headline = "More speed per heartbeat.",
             body = buildString {
                 append(
-                    "That $distance ${sport.label.lowercase()} came in at " +
-                        "${formatClock(curve.actualSeconds)}. Fitted from your " +
-                        "${curve.fit.sampleCount} best efforts — and deliberately not counting " +
-                        "this one — the curve said ${formatClock(curve.predictedSeconds)}. You " +
-                        "were ${"%.1f".format(abs(curve.fractionFasterThanPredicted) * 100)}% " +
-                        "better than your own form predicts. ",
+                    "Your ${efficiency.key.sport.label.lowercase()} is covering " +
+                        "${Words.magnitude(efficiency.improvementFraction)} more ground per beat " +
+                        "than it was before. Same heart rate, more distance — that is aerobic " +
+                        "fitness rather than one good day. ",
                 )
                 append(statusLine(verdict)).append(' ')
                 append(goalLine(verdict))
@@ -199,48 +181,50 @@ object NagTemplates {
         headline = "Easy, tiger.",
         body = buildString {
             append(
-                "${verdict.snapshot.acute.totalLoad.roundToInt()} HRSS in seven days against a " +
-                    "base of ${verdict.snapshot.chronic.loadPerWeek.roundToInt()} a week — " +
-                    "a ratio of ${"%.2f".format(verdict.acwr ?: 0.0)}. ",
+                "You have piled on far more this week than the weeks behind it have been " +
+                    "carrying. That is the range where the next session starts costing more than " +
+                    "it buys, and the cost is usually paid somewhere you were not watching — a " +
+                    "tendon, a night's sleep, a fortnight off. ",
             )
-            append(
-                "That is the range where the next session starts costing more than it buys. " +
-                    "Nothing you are training for gets closer if you are hurt for a month. ",
-            )
+            append("Nothing you are training for gets closer if you are hurt for a month. ")
             append(goalLine(verdict))
         },
         source = NagSource.TEMPLATE,
     )
 
-    private fun daysLine(verdict: Verdict): String = when (val days = verdict.daysSinceLastActivity) {
+    private fun daysLine(verdict: Verdict): String = when (verdict.daysSinceLastActivity) {
         null -> "Nothing stored at all."
         0L -> "You went out today."
-        1L -> "Last session was yesterday."
-        else -> "It has been $days days since your last session."
+        1L -> "Your last session was yesterday."
+        else -> "Your last session was ${Words.days(verdict.daysSinceLastActivity)}."
     }
 
     private fun newsLine(verdict: Verdict): String {
-        val summary = verdict.news.take(3).joinToString(", ") { activity ->
-            val sport = activity.sport.label.lowercase()
-            // A pool session with no distance recorded still happened; describing it by duration
-            // is better than an em dash where a number should be.
-            activity.distanceMeters
-                ?.let { "${formatDistanceShort(it, activity.sport)} $sport" }
-                ?: "${activity.scoredDuration.toMinutes()} min $sport"
-        }
-        return "${verdict.news.size} session(s) since I last looked: $summary."
-    }
+        if (verdict.news.isEmpty()) return "Nothing new since I last looked."
 
-    /** The "here is how you have been doing" line the no-news case is built around. */
-    private fun statusLine(verdict: Verdict): String {
-        val week = verdict.snapshot.acute
-        return "Last seven days: ${week.activityCount} session(s), " +
-            "${week.activeDays} active day(s), ${week.totalLoad.roundToInt()} HRSS."
+        val sports = verdict.news.map { it.sport.label.lowercase() }.distinct()
+        return "${Words.capitalise(Words.sessions(verdict.news.size))} since I last looked — " +
+            "${sports.joinToString(", ")}."
     }
 
     /**
-     * The goal is what decides which of these numbers matters, so every nag ends by tying back to
-     * it. Without one, the app is a spreadsheet with opinions.
+     * The "here is how you have been going" line, as a register rather than a scoreline.
+     *
+     * "Across the whole week" earns its length: this follows a line about what arrived since the
+     * last check-in, and without the change of scope being spelled out, one new session followed by
+     * a busy week reads as a contradiction.
+     */
+    private fun statusLine(verdict: Verdict): String {
+        val week = verdict.snapshot.acute
+        if (week.activityCount == 0) return "Nothing at all in the last week."
+
+        return "Across the whole week that is ${Words.sessions(week.activityCount)} at a " +
+            "${Words.weekly(week.loadPerWeek)} load for you."
+    }
+
+    /**
+     * The goal is what decides which of this matters, so every nag ends by tying back to it.
+     * Without one, the app is a spreadsheet with opinions.
      */
     private fun goalLine(verdict: Verdict): String {
         val goal = verdict.goal
@@ -249,29 +233,24 @@ object NagTemplates {
         val progress = verdict.goalProgress
             ?: return "Goal is \"${goal.text}\", but there is nothing to measure it from yet."
 
-        val direction = if (progress.improvementFraction >= 0) "up" else "down"
-        val percent = "%.1f".format(abs(progress.improvementFraction) * 100)
+        if (!progress.hasMoved) return "On \"${goal.text}\": flat so far."
 
-        val detail = when (progress.dimension) {
+        // Each dimension needs its own comparative. "The load you are carrying is worse" is not
+        // English, and a goal line that reads like a translation undoes the point of writing it out.
+        val (subject, better, worse) = when (progress.dimension) {
             GoalDimension.DISTANCE ->
-                "Longest is ${formatDistanceShort(progress.currentValue, goal.sport)} against " +
-                    "${formatDistanceShort(progress.startValue, goal.sport)} when you set it"
+                Triple("your longest effort is", "further", "shorter")
 
             GoalDimension.PACE ->
-                "Your ${formatDistanceShort(progress.bucketMeters, goal.sport)} is worth " +
-                    "${formatClock(progress.currentValue)} now, against " +
-                    "${formatClock(progress.startValue)} when you set it"
+                Triple("your pace over that distance is", "quicker", "slower")
 
             GoalDimension.VOLUME ->
-                "You are carrying ${progress.currentValue.roundToInt()} HRSS a week against " +
-                    "${progress.startValue.roundToInt()} when you started"
+                Triple("the load you are carrying is", "higher", "lower")
         }
+        val direction = if (progress.improvementFraction >= 0) better else worse
 
-        return if (progress.hasMoved) {
-            "On \"${goal.text}\": $detail — $direction $percent%."
-        } else {
-            "On \"${goal.text}\": $detail. Flat so far."
-        }
+        return "On \"${goal.text}\": $subject " +
+            "${Words.magnitude(progress.improvementFraction)} $direction than when you set it."
     }
 
     private fun shove(pick: Long): String = choose(

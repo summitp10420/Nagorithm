@@ -7,20 +7,31 @@ import com.nagorithm.app.data.ActivityRepository
 import com.nagorithm.app.data.Goal
 import com.nagorithm.app.data.GoalDimension
 import com.nagorithm.app.data.NagorithmDatabase
+import com.nagorithm.app.data.Note
 import com.nagorithm.app.data.Profile
 import com.nagorithm.app.data.Sex
 import com.nagorithm.app.data.StoredActivity
 import com.nagorithm.app.data.SyncResult
 import com.nagorithm.app.effort.EffortSnapshot
+import com.nagorithm.app.effort.RampSignal
+import com.nagorithm.app.effort.TrainingBalance
+import com.nagorithm.app.effort.acwrReading
+import com.nagorithm.app.effort.trainingBalance
 import com.nagorithm.app.health.HealthConnectAvailability
 import com.nagorithm.app.health.HealthConnectManager
+import com.nagorithm.app.health.ImportWatermark
 import com.nagorithm.app.health.SportCategory
+import com.nagorithm.app.health.importWindowStart
 import com.nagorithm.app.llm.ApiKeyStore
+import com.nagorithm.app.llm.GeminiClient
+import com.nagorithm.app.llm.NagWriter
+import com.nagorithm.app.llm.RecentPicture
 import com.nagorithm.app.verdict.CheckIn
 import com.nagorithm.app.verdict.Nag
 import com.nagorithm.app.verdict.NagTemplates
 import com.nagorithm.app.verdict.NagTone
 import com.nagorithm.app.verdict.VerdictEngine
+import com.nagorithm.app.verdict.VerdictState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -31,6 +42,33 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.temporal.ChronoUnit
+
+/** One side of the bake-off: the verdict a signal reached, and the words that came out of it. */
+data class SignalCandidate(
+    val signal: RampSignal,
+    val state: VerdictState,
+    val nag: Nag,
+    /** The one number behind it, so a disagreement can be understood rather than just observed. */
+    val detail: String,
+    val note: String,
+)
+
+sealed interface ComparisonUiState {
+    data object Idle : ComparisonUiState
+
+    data object Running : ComparisonUiState
+
+    data class Failed(val message: String) : ComparisonUiState
+
+    data class Ready(
+        val acwr: SignalCandidate,
+        val form: SignalCandidate,
+        val caveats: List<String>,
+    ) : ComparisonUiState {
+        /** The only case worth reading closely. Agreement means the choice does not matter today. */
+        val disagree: Boolean get() = acwr.state != form.state
+    }
+}
 
 data class HealthConnectUiState(
     val hasChecked: Boolean = false,
@@ -64,6 +102,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val healthConnect = HealthConnectManager(application)
 
+    private val watermark = ImportWatermark(application)
+
     private val repository = NagorithmDatabase.get(application).let { db ->
         ActivityRepository(
             healthConnect = healthConnect,
@@ -71,8 +111,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             profileDao = db.profileDao(),
             goalDao = db.goalDao(),
             spokenNagDao = db.spokenNagDao(),
+            noteDao = db.noteDao(),
         )
     }
+
+    val notes: StateFlow<List<Note>> = repository.observeNotes()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val apiKeyStore = ApiKeyStore(application)
 
@@ -90,6 +134,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(HealthConnectUiState())
     val uiState: StateFlow<HealthConnectUiState> = _uiState.asStateFlow()
+
+    private val _comparison = MutableStateFlow<ComparisonUiState>(ComparisonUiState.Idle)
+    val comparison: StateFlow<ComparisonUiState> = _comparison.asStateFlow()
 
     private val _syncState = MutableStateFlow<SyncUiState>(SyncUiState.Idle)
     val syncState: StateFlow<SyncUiState> = _syncState.asStateFlow()
@@ -179,16 +226,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _syncState.value = SyncUiState.Syncing
 
             val to = Instant.now()
-            val from = to.minus(FETCH_WINDOW_DAYS, ChronoUnit.DAYS)
+            val from = importWindowStart(watermark.importedFrom, to, healthConnect.canReadHistory())
 
             _syncState.value = runCatching { repository.syncFromHealthConnect(from, to) }.fold(
                 onSuccess = {
+                    // Only after it worked. A crash halfway through a year of samples must not
+                    // leave the app believing the deep read is done.
+                    watermark.record(from)
                     _feedAlive.value = it.feedAlive
-                    SyncUiState.Completed(it, FETCH_WINDOW_DAYS)
+                    SyncUiState.Completed(it, ChronoUnit.DAYS.between(from, to))
                 },
                 onFailure = { SyncUiState.Failed(it.message ?: it::class.java.simpleName) },
             )
         }
+    }
+
+    /**
+     * Goes back and gets everything again.
+     *
+     * The history permission is usually granted after the first sync has already run and set the
+     * watermark, so without this the app would sit on a month of data with the means to read a
+     * year sitting unused.
+     */
+    fun reimportHistory() {
+        watermark.forget()
+        sync()
     }
 
     fun setGoal(
@@ -217,6 +279,123 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setTone(tone: NagTone) {
         viewModelScope.launch { repository.setTone(tone) }
+    }
+
+    /**
+     * Runs the whole pipeline twice, changing one thing.
+     *
+     * Nothing here is recorded. The escalation counter and the schedule both read the spoken-nag
+     * history, so writing experiments into it would have the app believing it had already said
+     * things it never said.
+     */
+    fun compareSignals() {
+        _comparison.value = ComparisonUiState.Running
+
+        viewModelScope.launch {
+            val result = runCatching {
+                val now = Instant.now()
+                val activities = repository.allActivities()
+                val snapshot = EffortSnapshot.from(activities, now)
+                val goal = repository.activeGoal()
+                val profile = repository.currentProfile()
+                val balance = trainingBalance(activities, now)
+
+                val picture = RecentPicture.build(activities, now)
+                val notes = RecentPicture.notes(
+                    repository.recentNotes(now.minus(RecentPicture.NOTE_WINDOW_DAYS, ChronoUnit.DAYS)),
+                    now,
+                )
+
+                val writer = NagWriter(apiKeyStore.geminiKey?.let(::GeminiClient))
+                val tone = profile?.tone ?: NagTone.SNARKY
+
+                val candidates = RampSignal.entries.map { signal ->
+                    val verdict = VerdictEngine.evaluate(
+                        activities = activities,
+                        snapshot = snapshot,
+                        goal = goal,
+                        lastCheckInEpochMillis = profile?.lastCheckInEpochMillis,
+                        feedAlive = _feedAlive.value,
+                        now = now,
+                        rampSignal = signal,
+                        balance = balance,
+                    )
+                    val written = writer.write(verdict, tone, picture, notes)
+
+                    SignalCandidate(
+                        signal = signal,
+                        state = verdict.state,
+                        nag = written.nag,
+                        detail = detail(signal, snapshot.acwr, balance),
+                        note = written.note,
+                    )
+                }.associateBy { it.signal }
+
+                ComparisonUiState.Ready(
+                    acwr = candidates.getValue(RampSignal.ACWR),
+                    form = candidates.getValue(RampSignal.FORM),
+                    caveats = caveats(balance),
+                )
+            }
+
+            _comparison.value = result.getOrElse {
+                ComparisonUiState.Failed(it.message ?: it::class.java.simpleName)
+            }
+        }
+    }
+
+    private fun detail(signal: RampSignal, acwr: Double?, balance: TrainingBalance?): String =
+        when (signal) {
+            RampSignal.ACWR -> acwr
+                ?.let { "ACWR %.2f — %s".format(it, acwrReading(it).label) }
+                ?: "ACWR unavailable — not enough history to divide by."
+
+            RampSignal.FORM -> when {
+                balance == null -> "Form unavailable — nothing scored yet."
+
+                balance.formPercent == null ->
+                    "Form withheld — %d day(s) of history and a fitness of %.0f. Not a number yet."
+                        .format(balance.daysOfHistory, balance.fitness)
+
+                else -> "Form %+.0f%% of fitness — %s (fitness %.0f, fatigue %.0f)".format(
+                    balance.formPercent,
+                    balance.reading?.label,
+                    balance.fitness,
+                    balance.fatigue,
+                )
+            }
+        }
+
+    private fun caveats(balance: TrainingBalance?): List<String> = buildList {
+        if (balance == null) return@buildList
+
+        if (!balance.isSettled) {
+            add(
+                "Fitness has only ${balance.daysOfHistory} day(s) behind it, and a 42-day average " +
+                    "needs about ${TrainingBalance.SETTLING_DAYS} before it stops being mostly " +
+                    "the zero it started from, so form is being withheld rather than guessed at. " +
+                    "Granting history access and re-importing is what fixes this, not waiting.",
+            )
+        }
+        if (balance.estimatedShare > 0.3) {
+            add(
+                "${"%.0f".format(balance.estimatedShare * 100)}% of the last month's load was " +
+                    "estimated from duration rather than measured. Form is a difference between " +
+                    "two large numbers, so it amplifies that rather than averaging it out.",
+            )
+        }
+        add(
+            "Neither signal can see lifting, which never reaches the database. Both will read " +
+                "fresher than you are in a week with heavy strength work.",
+        )
+    }
+
+    fun addNote(text: String) {
+        viewModelScope.launch { repository.addNote(text) }
+    }
+
+    fun deleteNote(id: Long) {
+        viewModelScope.launch { repository.deleteNote(id) }
     }
 
     /** Marks the current nag as read. Everything synced after this counts as news again. */
@@ -260,9 +439,5 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // Loads are derived from these values, so they are stale the moment they change.
             sync()
         }
-    }
-
-    private companion object {
-        const val FETCH_WINDOW_DAYS = 30L
     }
 }

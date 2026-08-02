@@ -40,11 +40,25 @@ class HealthConnectManager(private val context: Context) {
      */
     val backgroundReadPermission: String = HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND
 
+    /**
+     * Also optional, and also the difference between a working app and a misleading one.
+     *
+     * Without it every read is silently clipped to the 30 days before permissions were granted,
+     * which is not an empty history — it is a history that looks real and is wrong. Fitness reads
+     * low, form reads catastrophic, and the app confidently tells someone who has trained all year
+     * to back off.
+     */
+    val historyReadPermission: String = HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY
+
     /** Everything worth asking for at once, so the user sees a single permission sheet. */
-    val allPermissions: Set<String> = requiredPermissions + backgroundReadPermission
+    val allPermissions: Set<String> =
+        requiredPermissions + backgroundReadPermission + historyReadPermission
 
     suspend fun canReadInBackground(): Boolean =
         runCatching { grantedPermissions().contains(backgroundReadPermission) }.getOrDefault(false)
+
+    suspend fun canReadHistory(): Boolean =
+        runCatching { grantedPermissions().contains(historyReadPermission) }.getOrDefault(false)
 
     fun availability(): HealthConnectAvailability =
         when (HealthConnectClient.getSdkStatus(context, PROVIDER_PACKAGE)) {

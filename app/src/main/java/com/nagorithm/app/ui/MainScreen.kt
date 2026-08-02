@@ -7,18 +7,23 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import android.widget.Toast
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.nagorithm.app.ComparisonUiState
 import com.nagorithm.app.HealthConnectUiState
 import com.nagorithm.app.ProfileUiState
 import com.nagorithm.app.SyncUiState
 import com.nagorithm.app.data.Goal
 import com.nagorithm.app.data.GoalDimension
+import com.nagorithm.app.data.Note
 import com.nagorithm.app.data.Sex
 import com.nagorithm.app.data.StoredActivity
 import com.nagorithm.app.effort.EffortSnapshot
@@ -39,6 +44,8 @@ fun MainScreen(
     effort: EffortSnapshot?,
     goal: Goal?,
     checkIn: CheckIn?,
+    notes: List<Note>,
+    comparison: ComparisonUiState,
     maskedApiKey: String?,
     requiredPermissions: Set<String>,
     requestablePermissions: Set<String>,
@@ -48,13 +55,18 @@ fun MainScreen(
     onSetGoal: (String, GoalDimension, SportCategory?, Double?, Long?) -> Unit,
     onToneChange: (NagTone) -> Unit,
     onSaveApiKey: (String) -> Unit,
+    onAddNote: (String) -> Unit,
+    onDeleteNote: (Long) -> Unit,
+    onCompare: () -> Unit,
     onAcknowledge: () -> Unit,
     onNagNow: () -> Unit,
     onRecaptureBaseline: () -> Unit,
+    onReimportHistory: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val profile = (profileState as? ProfileUiState.Loaded)?.profile
     val canSync = state.grantedPermissions.containsAll(requiredPermissions)
+    val context = LocalContext.current
 
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
         Column(
@@ -74,11 +86,32 @@ fun MainScreen(
 
             CheckInSection(checkIn = checkIn, onAcknowledge = onAcknowledge)
 
+            NotesSection(
+                notes = notes,
+                onAddNote = onAddNote,
+                onDeleteNote = onDeleteNote,
+            )
+
+            CompareSection(state = comparison, onCompare = onCompare)
+
+            // Only once there is a profile, since tone is stored on it and there is nothing to
+            // write to before onboarding.
+            if (profile != null) {
+                VoiceSection(
+                    tone = profile.tone,
+                    maskedApiKey = maskedApiKey,
+                    onToneChange = onToneChange,
+                    onSaveApiKey = onSaveApiKey,
+                )
+            }
+
             GoalSection(
                 goal = goal,
                 progress = checkIn?.verdict?.goalProgress,
                 onSetGoal = onSetGoal,
             )
+
+            ProfileSection(state = profileState, onSave = onSaveProfile)
 
             if (canSync) {
                 Button(
@@ -96,20 +129,20 @@ fun MainScreen(
                 }
             }
 
-            EffortSection(snapshot = effort, profile = profile)
-
-            // Only once there is a profile, since tone is stored on it and there is nothing to
-            // write to before onboarding.
-            if (profile != null) {
-                VoiceSection(
-                    tone = profile.tone,
-                    maskedApiKey = maskedApiKey,
-                    onToneChange = onToneChange,
-                    onSaveApiKey = onSaveApiKey,
-                )
+            // Runs the whole unattended path — sync, verdict, notification — so the thing that
+            // normally happens invisibly every few hours can be watched happening once.
+            OutlinedButton(
+                onClick = {
+                    onNagNow()
+                    Toast.makeText(context, "Running a check-in in the background…", Toast.LENGTH_SHORT)
+                        .show()
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Nag me now")
             }
 
-            ProfileSection(state = profileState, onSave = onSaveProfile)
+            EffortSection(snapshot = effort, profile = profile)
 
             DiagnosticsSection(
                 state = state,
@@ -117,8 +150,8 @@ fun MainScreen(
                 storedActivities = storedActivities,
                 requiredPermissions = requestablePermissions,
                 onCheck = onCheck,
-                onNagNow = onNagNow,
                 onRecaptureBaseline = onRecaptureBaseline,
+                onReimportHistory = onReimportHistory,
             )
         }
     }

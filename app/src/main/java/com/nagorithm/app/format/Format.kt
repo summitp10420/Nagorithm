@@ -48,8 +48,11 @@ fun formatHeartRate(bpm: Long?): String = bpm?.let { "$it bpm" } ?: "—"
  * a swim at 19:22 per kilometre is technically correct and completely unreadable.
  */
 fun formatPace(secondsPerKm: Double, sport: SportCategory?): String = when (sport) {
-    SportCategory.SWIMMING, SportCategory.ROWING ->
-        "${clock((secondsPerKm / 10.0).roundToLong())} /100m"
+    SportCategory.SWIMMING -> "${clock((secondsPerKm / 10.0).roundToLong())} /100m"
+
+    // Rowers read splits per 500 m and nothing else. Quoting a 2 km piece per 100 m is the kind
+    // of detail that tells a rower the app was built by someone who has never sat on an erg.
+    SportCategory.ROWING -> "${clock((secondsPerKm / 2.0).roundToLong())} /500m"
 
     SportCategory.CYCLING ->
         String.format(Locale.US, "%.1f km/h", 3600.0 / secondsPerKm)

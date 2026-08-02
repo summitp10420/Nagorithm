@@ -7,14 +7,21 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [StoredActivity::class, Profile::class, Goal::class, SpokenNag::class],
-    version = 6,
+    entities = [
+        StoredActivity::class,
+        Profile::class,
+        Goal::class,
+        SpokenNag::class,
+        Note::class,
+    ],
+    version = 7,
     exportSchema = true,
     // Tables and a defaulted column only, so Room can write all of these unaided.
     autoMigrations = [
         AutoMigration(from = 3, to = 4),
         AutoMigration(from = 4, to = 5),
         AutoMigration(from = 5, to = 6),
+        AutoMigration(from = 6, to = 7),
     ],
 )
 abstract class NagorithmDatabase : RoomDatabase() {
@@ -26,6 +33,8 @@ abstract class NagorithmDatabase : RoomDatabase() {
     abstract fun goalDao(): GoalDao
 
     abstract fun spokenNagDao(): SpokenNagDao
+
+    abstract fun noteDao(): NoteDao
 
     companion object {
         @Volatile

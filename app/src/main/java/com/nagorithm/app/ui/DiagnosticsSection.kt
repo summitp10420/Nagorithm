@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.health.connect.client.PermissionController
+import androidx.health.connect.client.permission.HealthPermission
 import com.nagorithm.app.HealthConnectUiState
 import com.nagorithm.app.SyncUiState
 import com.nagorithm.app.data.StoredActivity
@@ -41,8 +42,8 @@ fun DiagnosticsSection(
     storedActivities: List<StoredActivity>,
     requiredPermissions: Set<String>,
     onCheck: () -> Unit,
-    onNagNow: () -> Unit,
     onRecaptureBaseline: () -> Unit,
+    onReimportHistory: () -> Unit,
 ) {
     val context = LocalContext.current
     var expanded by rememberSaveable { mutableStateOf(false) }
@@ -71,19 +72,6 @@ fun DiagnosticsSection(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Text(if (state.isChecking) "Checking…" else "Check Health Connect")
-    }
-
-    // Runs the entire unattended path — background sync, verdict, notification — so the thing
-    // that normally happens invisibly every few hours can be watched happening once.
-    OutlinedButton(
-        onClick = {
-            onNagNow()
-            Toast.makeText(context, "Running a check-in in the background…", Toast.LENGTH_SHORT)
-                .show()
-        },
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text("Nag me now")
     }
 
     if (state.hasChecked) {
@@ -119,6 +107,12 @@ fun DiagnosticsSection(
             color = MaterialTheme.colorScheme.error,
         )
     }
+
+    HistoryImport(
+        canReadHistory = state.grantedPermissions
+            .contains(HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY),
+        onReimportHistory = onReimportHistory,
+    )
 
     OutlinedButton(onClick = onRecaptureBaseline, modifier = Modifier.fillMaxWidth()) {
         Text("Recapture baseline from today")
@@ -236,6 +230,44 @@ private fun PermissionsCard(requiredPermissions: Set<String>, grantedPermissions
     }
 }
 
+/**
+ * The permission that decides whether this app sees a training history or a keyhole view of one.
+ *
+ * It is usually granted after the first sync has already run, so there has to be a way to go back
+ * and fetch the rest. Nothing does that automatically — re-reading a year of heart-rate samples is
+ * slow, and it should happen because someone asked for it.
+ */
+@Composable
+private fun HistoryImport(canReadHistory: Boolean, onReimportHistory: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Past data", style = MaterialTheme.typography.labelMedium)
+
+            Text(
+                text = if (canReadHistory) {
+                    "Granted. Syncs can reach the full year Health Connect is holding."
+                } else {
+                    "Not granted. Every read is clipped to the 30 days before permissions were " +
+                        "given, which is why fitness reads low and form reads catastrophic. " +
+                        "Allow \"access past data\" in the permission sheet above, then import."
+                },
+                style = MaterialTheme.typography.bodyMedium,
+            )
+
+            OutlinedButton(
+                onClick = onReimportHistory,
+                enabled = canReadHistory,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Import a year of history")
+            }
+        }
+    }
+}
+
 @Composable
 private fun ScanDiagnosticsCard(diagnostics: ExerciseScanDiagnostics, windowDays: Long) {
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -274,9 +306,9 @@ private fun ScanDiagnosticsCard(diagnostics: ExerciseScanDiagnostics, windowDays
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
             Text(
-                text = "Scan covers $windowDays days. Health Connect will not serve data from " +
-                    "before permissions were granted minus 30 days, so older sessions are " +
-                    "invisible without the history permission.",
+                text = "Scan covered $windowDays day(s). A short window here after a deep import " +
+                    "is expected: there is nothing older left to find, so routine syncs only " +
+                    "look back far enough to catch a session that arrived late.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

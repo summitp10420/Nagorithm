@@ -124,11 +124,18 @@ class VerdictEngineTest {
 
     @Test
     fun `three hard sessions on a thin base is a warning, not applause`() {
+        // Enough history that the ratio is allowed to speak at all: a chronic window that is full
+        // rather than merely elapsed, and enough sessions in it that one of them moving does not
+        // decide the answer.
         val base = listOf(
-            activity("h1", daysAgo = 26, hrss = 40.0, distanceMeters = 20_000.0, durationMinutes = 40),
-            activity("h2", daysAgo = 24, hrss = 40.0, distanceMeters = 40_000.0, durationMinutes = 80),
-            activity("h3", daysAgo = 22, hrss = 40.0, distanceMeters = 60_000.0, durationMinutes = 120),
-            activity("h4", daysAgo = 20, hrss = 40.0, distanceMeters = 30_000.0, durationMinutes = 60),
+            activity("h0", daysAgo = 40, hrss = 40.0, distanceMeters = 20_000.0, durationMinutes = 40),
+            activity("h1", daysAgo = 27, hrss = 40.0, distanceMeters = 20_000.0, durationMinutes = 40),
+            activity("h2", daysAgo = 25, hrss = 40.0, distanceMeters = 40_000.0, durationMinutes = 80),
+            activity("h3", daysAgo = 23, hrss = 40.0, distanceMeters = 60_000.0, durationMinutes = 120),
+            activity("h4", daysAgo = 21, hrss = 40.0, distanceMeters = 30_000.0, durationMinutes = 60),
+            activity("h5", daysAgo = 19, hrss = 40.0, distanceMeters = 30_000.0, durationMinutes = 60),
+            activity("h6", daysAgo = 17, hrss = 40.0, distanceMeters = 30_000.0, durationMinutes = 60),
+            activity("h7", daysAgo = 15, hrss = 40.0, distanceMeters = 30_000.0, durationMinutes = 60),
         )
         val burst = listOf(
             activity("b1", daysAgo = 2, hrss = 200.0, distanceMeters = 35_000.0, durationMinutes = 60),
@@ -147,10 +154,14 @@ class VerdictEngineTest {
         // Same shape as the ramping test, an order of magnitude down. Two hours of moderate work
         // in a week is not something to be told off for, whatever the ratio says.
         val base = listOf(
-            activity("h1", daysAgo = 26, hrss = 8.0, distanceMeters = 20_000.0, durationMinutes = 40),
-            activity("h2", daysAgo = 24, hrss = 8.0, distanceMeters = 40_000.0, durationMinutes = 80),
-            activity("h3", daysAgo = 22, hrss = 8.0, distanceMeters = 60_000.0, durationMinutes = 120),
-            activity("h4", daysAgo = 20, hrss = 8.0, distanceMeters = 30_000.0, durationMinutes = 60),
+            activity("h0", daysAgo = 40, hrss = 8.0, distanceMeters = 20_000.0, durationMinutes = 40),
+            activity("h1", daysAgo = 27, hrss = 8.0, distanceMeters = 20_000.0, durationMinutes = 40),
+            activity("h2", daysAgo = 25, hrss = 8.0, distanceMeters = 40_000.0, durationMinutes = 80),
+            activity("h3", daysAgo = 23, hrss = 8.0, distanceMeters = 60_000.0, durationMinutes = 120),
+            activity("h4", daysAgo = 21, hrss = 8.0, distanceMeters = 30_000.0, durationMinutes = 60),
+            activity("h5", daysAgo = 19, hrss = 8.0, distanceMeters = 30_000.0, durationMinutes = 60),
+            activity("h6", daysAgo = 17, hrss = 8.0, distanceMeters = 30_000.0, durationMinutes = 60),
+            activity("h7", daysAgo = 15, hrss = 8.0, distanceMeters = 30_000.0, durationMinutes = 60),
         )
         val burst = listOf(
             activity("b1", daysAgo = 2, hrss = 40.0, distanceMeters = 35_000.0, durationMinutes = 60),
@@ -160,6 +171,29 @@ class VerdictEngineTest {
         val verdict = evaluate(base + burst)
 
         assertTrue(verdict.acwr!! > 1.5)
+        assertTrue(verdict.state != VerdictState.RAMPING_HARD)
+    }
+
+    /**
+     * The bike-ride regression. Three weeks of tracking against a genuinely hard week produced a
+     * ratio of two and a half and a warning, because the twenty-eight day denominator was averaging
+     * over days that were never recorded. Silence is the only honest output here.
+     */
+    @Test
+    fun `a ramp is not called until the chronic window is actually full`() {
+        val recent = listOf(
+            activity("r1", daysAgo = 20, hrss = 40.0, distanceMeters = 20_000.0, durationMinutes = 40),
+            activity("r2", daysAgo = 18, hrss = 40.0, distanceMeters = 20_000.0, durationMinutes = 40),
+            activity("r3", daysAgo = 16, hrss = 40.0, distanceMeters = 20_000.0, durationMinutes = 40),
+            activity("r4", daysAgo = 14, hrss = 40.0, distanceMeters = 20_000.0, durationMinutes = 40),
+            activity("b1", daysAgo = 2, hrss = 200.0, distanceMeters = 35_000.0, durationMinutes = 60),
+            activity("b2", daysAgo = 1, hrss = 200.0, distanceMeters = 35_000.0, durationMinutes = 60),
+            activity("b3", daysAgo = 0, hrss = 200.0, distanceMeters = 35_000.0, durationMinutes = 60),
+        )
+
+        val verdict = evaluate(recent)
+
+        assertEquals(null, verdict.acwr)
         assertTrue(verdict.state != VerdictState.RAMPING_HARD)
     }
 

@@ -37,6 +37,8 @@ class MainActivity : ComponentActivity() {
                 val goal by viewModel.activeGoal.collectAsStateWithLifecycle()
                 val checkIn by viewModel.checkIn.collectAsStateWithLifecycle()
                 val maskedApiKey by viewModel.maskedApiKey.collectAsStateWithLifecycle()
+                val notes by viewModel.notes.collectAsStateWithLifecycle()
+                val comparison by viewModel.comparison.collectAsStateWithLifecycle()
 
                 RequestNotificationPermission()
 
@@ -48,6 +50,8 @@ class MainActivity : ComponentActivity() {
                     effort = effort,
                     goal = goal,
                     checkIn = checkIn,
+                    notes = notes,
+                    comparison = comparison,
                     maskedApiKey = maskedApiKey,
                     requiredPermissions = viewModel.requiredPermissions,
                     requestablePermissions = viewModel.allPermissions,
@@ -57,9 +61,13 @@ class MainActivity : ComponentActivity() {
                     onSetGoal = viewModel::setGoal,
                     onToneChange = viewModel::setTone,
                     onSaveApiKey = viewModel::saveApiKey,
+                    onAddNote = viewModel::addNote,
+                    onDeleteNote = viewModel::deleteNote,
+                    onCompare = viewModel::compareSignals,
                     onAcknowledge = viewModel::acknowledgeCheckIn,
                     onNagNow = { NagWorker.runNow(this) },
                     onRecaptureBaseline = viewModel::recaptureBaseline,
+                    onReimportHistory = viewModel::reimportHistory,
                 )
             }
         }

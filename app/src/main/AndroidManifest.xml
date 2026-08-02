@@ -15,6 +15,15 @@
     -->
     <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
 
+    <!--
+      Health Connect keeps everything forever but only serves a new app the last 30 days of it.
+      That cap is why a fit user looks like a beginner here: a 42-day fitness average fed 30 days
+      of data spends its first three months climbing out of the zero it started from, and reports
+      the user as wrecked the whole time. Granting this replaces that arithmetic with the sessions
+      that actually happened.
+    -->
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_HISTORY" />
+
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!--

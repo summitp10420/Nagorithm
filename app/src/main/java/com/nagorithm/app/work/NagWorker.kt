@@ -14,9 +14,12 @@ import com.nagorithm.app.data.NagorithmDatabase
 import com.nagorithm.app.effort.EffortSnapshot
 import com.nagorithm.app.health.HealthConnectAvailability
 import com.nagorithm.app.health.HealthConnectManager
+import com.nagorithm.app.health.ImportWatermark
+import com.nagorithm.app.health.importWindowStart
 import com.nagorithm.app.llm.ApiKeyStore
 import com.nagorithm.app.llm.GeminiClient
 import com.nagorithm.app.llm.NagWriter
+import com.nagorithm.app.llm.RecentPicture
 import com.nagorithm.app.verdict.NagDecision
 import com.nagorithm.app.verdict.NagSchedule
 import com.nagorithm.app.verdict.VerdictEngine
@@ -46,6 +49,7 @@ class NagWorker(context: Context, params: WorkerParameters) : CoroutineWorker(co
             profileDao = database.profileDao(),
             goalDao = database.goalDao(),
             spokenNagDao = database.spokenNagDao(),
+            noteDao = database.noteDao(),
         )
 
         // Without a profile there is no max heart rate to score against, so there is no verdict
@@ -53,9 +57,14 @@ class NagWorker(context: Context, params: WorkerParameters) : CoroutineWorker(co
         val profile = repository.currentProfile() ?: return Result.success()
 
         val now = Instant.now()
-        val sync = runCatching {
-            repository.syncFromHealthConnect(now.minus(SYNC_WINDOW_DAYS, ChronoUnit.DAYS), now)
-        }
+        val watermark = ImportWatermark(applicationContext)
+        val from = importWindowStart(
+            importedFrom = watermark.importedFrom,
+            now = now,
+            canReadHistory = healthConnect.canReadHistory(),
+        )
+        val sync = runCatching { repository.syncFromHealthConnect(from, now) }
+            .onSuccess { watermark.record(from) }
 
         // A failed read is usually a revoked permission or a Health Connect update in progress.
         // Retrying is right; inventing a verdict from stale data and calling someone lazy is not.
@@ -81,7 +90,15 @@ class NagWorker(context: Context, params: WorkerParameters) : CoroutineWorker(co
         if (!decision.speak) return Result.success()
 
         val key = ApiKeyStore(applicationContext).geminiKey
-        val written = NagWriter(key?.let(::GeminiClient)).write(verdict, profile.tone)
+        val written = NagWriter(key?.let(::GeminiClient)).write(
+            verdict = verdict,
+            tone = profile.tone,
+            picture = RecentPicture.build(activities, now),
+            notes = RecentPicture.notes(
+                repository.recentNotes(now.minus(RecentPicture.NOTE_WINDOW_DAYS, ChronoUnit.DAYS)),
+                now,
+            ),
+        )
         val notified = NagNotifier.post(applicationContext, written.nag)
 
         repository.recordSpokenNag(
@@ -102,7 +119,6 @@ class NagWorker(context: Context, params: WorkerParameters) : CoroutineWorker(co
         private const val WORK_NAME = "nagorithm-nag"
         private const val ON_DEMAND_WORK_NAME = "nagorithm-nag-now"
         private const val KEY_ON_DEMAND = "onDemand"
-        private const val SYNC_WINDOW_DAYS = 30L
 
         /**
          * Four times a day against a schedule that mostly stays quiet. Doze will defer these

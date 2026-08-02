@@ -80,17 +80,32 @@ data class EffortSnapshot(
     val acwr: Double? get() = chronic.loadPerWeek.takeIf { it > 0.0 }?.let { acute.totalLoad / it }
 
     /**
-     * A ratio needs a denominator built from a full chronic block. Health Connect only serves 30
-     * days to begin with, so early on the 28-day figure is really "everything there is", and
-     * comparing 7 days against it always looks like a taper.
+     * A ratio needs a denominator built from a full chronic block, and nothing else will do.
+     *
+     * Short of that the 28-day window is partly empty, so the average it produces is not a light
+     * month — it is a month that did not exist. The denominator comes out too small and the ratio
+     * too large, which is how three weeks of tracking reported a ratio of two and a half and told
+     * a man who had gone for a bike ride to calm down.
+     *
+     * Unlike the exponential averages this needs exactly its own length and no more. A flat window
+     * has no burn-in to wait out; it is either full or it is not.
      */
     val isColdStart: Boolean
-        get() = (historySpanDays ?: 0L) < MINIMUM_HISTORY_DAYS || chronic.activityCount < 4
+        get() = (historySpanDays ?: 0L) < MINIMUM_HISTORY_DAYS ||
+            chronic.activityCount < MINIMUM_CHRONIC_SESSIONS
 
     companion object {
         const val ACUTE_DAYS = 7L
         const val CHRONIC_DAYS = 28L
-        const val MINIMUM_HISTORY_DAYS = 21L
+
+        /** A full chronic block. Anything less is dividing by a month that was never recorded. */
+        const val MINIMUM_HISTORY_DAYS = CHRONIC_DAYS
+
+        /**
+         * Twenty-eight days containing three sessions is arithmetically a month and practically a
+         * rumour: one of them lands in the acute window and the ratio becomes a coin toss.
+         */
+        const val MINIMUM_CHRONIC_SESSIONS = 8
 
         fun from(
             activities: List<StoredActivity>,

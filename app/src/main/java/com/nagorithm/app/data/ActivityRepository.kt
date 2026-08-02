@@ -33,6 +33,7 @@ class ActivityRepository(
     private val profileDao: ProfileDao,
     private val goalDao: GoalDao,
     private val spokenNagDao: SpokenNagDao,
+    private val noteDao: NoteDao,
 ) {
 
     fun observeActivities(): Flow<List<StoredActivity>> = activityDao.observeActivities()
@@ -52,6 +53,18 @@ class ActivityRepository(
     suspend fun latestSpokenNag(): SpokenNag? = spokenNagDao.latest()
 
     fun observeLatestSpokenNag(): Flow<SpokenNag?> = spokenNagDao.observeLatest()
+
+    fun observeNotes(): Flow<List<Note>> = noteDao.observeRecent()
+
+    suspend fun recentNotes(since: Instant): List<Note> = noteDao.since(since.toEpochMilli())
+
+    suspend fun addNote(text: String, at: Instant = Instant.now()) {
+        if (text.isBlank()) return
+        noteDao.insert(Note(writtenAtEpochMillis = at.toEpochMilli(), text = text.trim()))
+        noteDao.trimTo()
+    }
+
+    suspend fun deleteNote(id: Long) = noteDao.delete(id)
 
     /**
      * Records what was said, so the next verdict knows it has already said it. The schedule's own

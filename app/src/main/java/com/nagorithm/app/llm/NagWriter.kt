@@ -18,11 +18,16 @@ data class WritingOutcome(val nag: Nag, val note: String)
  */
 class NagWriter(private val client: GeminiClient?) {
 
-    suspend fun write(verdict: Verdict, tone: NagTone): WritingOutcome {
+    suspend fun write(
+        verdict: Verdict,
+        tone: NagTone,
+        picture: List<String> = emptyList(),
+        notes: List<String> = emptyList(),
+    ): WritingOutcome {
         val template = NagTemplates.render(verdict)
         val model = client ?: return WritingOutcome(template, "No API key, so this is a template.")
 
-        val request = NagPrompt.build(verdict, template, tone)
+        val request = NagPrompt.build(verdict, template, tone, picture, notes)
 
         val written = model.write(request.prompt).getOrElse { failure ->
             return WritingOutcome(
@@ -33,7 +38,7 @@ class NagWriter(private val client: GeminiClient?) {
 
         val checked = NagGuard.check(
             "${written.headline} ${written.body}",
-            request.supplied,
+            request.quotable,
         )
 
         return if (checked.accepted) {
@@ -42,9 +47,8 @@ class NagWriter(private val client: GeminiClient?) {
                 "Written by the model in a ${tone.label.lowercase()} voice. ${checked.reason}",
             )
         } else {
-            // Silently swapping in the template would hide the model misbehaving, and the whole
-            // reason the guard exists is that a fabricated figure must never be indistinguishable
-            // from a real one.
+            // Silently swapping in the template would hide the model misbehaving, and a rejection
+            // showing up in the audit is how a drifting prompt gets noticed at all.
             WritingOutcome(template, "Model answer rejected: ${checked.reason}")
         }
     }

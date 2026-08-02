@@ -1,67 +1,59 @@
 package com.nagorithm.app.llm
 
-import kotlin.math.abs
-import kotlin.math.max
-
 data class GuardResult(val accepted: Boolean, val reason: String)
 
 /**
- * Checks that the model only rephrased, and did not quietly start doing arithmetic.
+ * Checks that the model wrote prose and not statistics.
  *
- * A language model asked to sound motivating will invent an encouraging statistic without being
- * asked, and a fabricated "you are up 15%" is worse than no message at all: it is indistinguishable
- * from the real figures sitting beside it, and one caught invention discredits every honest number
- * the app has ever shown. So every digit in the output has to trace back to one the verdict
- * supplied.
+ * An earlier version of this tried to verify arithmetic: every figure in the answer had to trace
+ * back to one the verdict supplied, with tolerances for rounding. It worked, and it was the wrong
+ * shape of problem. Verifying a model's numbers means anticipating every number it might derive —
+ * a pace from a distance and a time, a percentage from two loads, a split from a total — and each
+ * new one is another rule. The check can never be finished, only extended.
  *
- * Rounding is allowed, because "24%" for 24.2 is a rephrasing rather than a claim. Anything that
- * cannot be matched to a supplied figure sends the whole message back and the template goes out
- * instead.
+ * Forbidding figures altogether ends the argument. There is nothing to verify because there is
+ * nothing being claimed numerically, and the check collapses to a search for digits. The exact
+ * numbers still exist and are still shown, in the audit trail, computed by the app that can be held
+ * responsible for them.
+ *
+ * Digits appearing in the user's own words are the exception. A goal of "sub-3 marathon" has to
+ * survive being quoted back at them.
  */
 object NagGuard {
 
-    /** Long enough to say something, short enough to survive a notification shade. */
+    /**
+     * Long enough to say something, short enough that the shade truncates nothing that mattered.
+     * The ceiling is generous because a character in full flow is allowed a paragraph; it exists to
+     * catch a model that has started narrating rather than to enforce a house style.
+     */
     private const val MIN_LENGTH = 30
-    private const val MAX_LENGTH = 900
+    private const val MAX_LENGTH = 1_400
 
-    /** Absolute slack, so 24.2 may be said as 24. */
-    private const val ROUNDING_SLACK = 0.5
+    /** A run of digits and the punctuation that binds them, so "2:01/500m" is caught whole. */
+    private val FIGURE = Regex("""\d[\d.,:/]*""")
 
-    /** Relative slack, so 1162 may be said as 1160. */
-    private const val RELATIVE_SLACK = 0.005
+    private const val TRIMMED = ".,:/"
 
-    private val NUMBER = Regex("""\d+(?:\.\d+)?""")
-    private val THOUSANDS_SEPARATOR = Regex("""(?<=\d),(?=\d)""")
-
-    fun check(candidate: String, supplied: List<String>): GuardResult {
+    fun check(candidate: String, quotable: List<String>): GuardResult {
         val text = candidate.trim()
 
         if (text.length < MIN_LENGTH) return GuardResult(false, "Too short to be a real answer.")
         if (text.length > MAX_LENGTH) return GuardResult(false, "Ran long past what was asked for.")
 
-        val allowed = supplied.flatMap(::numbersIn)
-        val invented = numbersIn(text).filterNot { it.isJustifiedBy(allowed) }
+        val theirWords = quotable.joinToString(" ")
+        val figures = FIGURE.findAll(text)
+            .map { it.value.trimEnd(*TRIMMED.toCharArray()) }
+            .filterNot { theirWords.contains(it) }
+            .distinct()
+            .toList()
 
-        return if (invented.isEmpty()) {
-            GuardResult(true, "Every figure traces back to the verdict.")
+        return if (figures.isEmpty()) {
+            GuardResult(true, "Written in words, with no figures of its own.")
         } else {
             GuardResult(
                 false,
-                "Quoted ${invented.joinToString()} which the verdict never supplied.",
+                "Quoted ${figures.joinToString()} when the message should carry no figures at all.",
             )
         }
-    }
-
-    /**
-     * Times like 19:22 come apart into 19 and 22, which is fine — the same happens to the figures
-     * the verdict supplied, so the two sides are compared on equal terms.
-     */
-    fun numbersIn(text: String): List<Double> =
-        NUMBER.findAll(text.replace(THOUSANDS_SEPARATOR, ""))
-            .mapNotNull { it.value.toDoubleOrNull() }
-            .toList()
-
-    private fun Double.isJustifiedBy(allowed: List<Double>): Boolean = allowed.any {
-        abs(this - it) <= max(ROUNDING_SLACK, abs(it) * RELATIVE_SLACK)
     }
 }

@@ -7,6 +7,8 @@ import com.nagorithm.app.effort.CriticalSpeedFit
 import com.nagorithm.app.effort.CurveComparison
 import com.nagorithm.app.effort.EfficiencyTrend
 import com.nagorithm.app.effort.EffortSnapshot
+import com.nagorithm.app.effort.RampSignal
+import com.nagorithm.app.effort.TrainingBalance
 import com.nagorithm.app.effort.compareToCurve
 import com.nagorithm.app.effort.criticalSpeedFits
 import com.nagorithm.app.effort.efficiencyTrends
@@ -58,6 +60,13 @@ object VerdictEngine {
         lastCheckInEpochMillis: Long?,
         feedAlive: Boolean?,
         now: Instant = Instant.now(),
+        /**
+         * Which arithmetic gets to call someone overcooked. Both are computed from the same loads
+         * and usually agree; the parameter exists so the two can be run side by side against real
+         * weeks rather than chosen from first principles.
+         */
+        rampSignal: RampSignal = RampSignal.ACWR,
+        balance: TrainingBalance? = null,
     ): Verdict {
         val news = newsSince(activities, lastCheckInEpochMillis, now)
         val headline = headlineComparison(activities, news, goal?.sport)
@@ -70,8 +79,15 @@ object VerdictEngine {
         // sync and an accusation.
         val feedSilent = feedAlive == false && news.isEmpty()
 
+        // The absolute floor applies whichever signal is driving. Both are ratios in disguise, and
+        // a ratio of small numbers is still small.
+        val overcooked = when (rampSignal) {
+            RampSignal.ACWR -> (snapshot.acwr ?: 0.0) > RAMPING_ACWR
+            RampSignal.FORM -> balance != null && balance.isOverreaching
+        }
+
         val ramping = !snapshot.isColdStart &&
-            (snapshot.acwr ?: 0.0) > RAMPING_ACWR &&
+            overcooked &&
             snapshot.acute.totalLoad >= RAMPING_MINIMUM_ACUTE_LOAD &&
             news.isNotEmpty()
 
@@ -105,8 +121,45 @@ object VerdictEngine {
             daysSinceLastActivity = snapshot.daysSinceLastActivity,
             acwr = snapshot.acwr.takeIf { !snapshot.isColdStart },
             snapshot = snapshot,
-            reasons = explain(state, snapshot, news, headline, efficiency, progress, band, feedAlive, goal),
+            reasons = explain(state, snapshot, news, headline, efficiency, progress, band, feedAlive, goal) +
+                balanceReasons(rampSignal, balance),
         )
+    }
+
+    /**
+     * Only the driving signal is explained, since the audit trail should say what decided the
+     * verdict rather than everything that was computed on the way past it.
+     */
+    private fun balanceReasons(signal: RampSignal, balance: TrainingBalance?): List<String> {
+        if (signal != RampSignal.FORM || balance == null) return emptyList()
+
+        return buildList {
+            val percent = balance.formPercent
+            if (percent == null) {
+                add(
+                    "Form withheld: ${balance.daysOfHistory} day(s) of history against a fitness " +
+                        "of ${"%.0f".format(balance.fitness)}, which is not enough to divide by.",
+                )
+            } else {
+                add(
+                    "Form ${"%+.0f".format(percent)}% of fitness — " +
+                        "${balance.reading?.label} (fitness ${"%.0f".format(balance.fitness)}, " +
+                        "fatigue ${"%.0f".format(balance.fatigue)}).",
+                )
+            }
+            if (!balance.isSettled) {
+                add(
+                    "Only ${balance.daysOfHistory} day(s) of history, so the 42-day fitness " +
+                        "average has not settled and form cannot be read yet.",
+                )
+            }
+            if (balance.estimatedShare > 0.3) {
+                add(
+                    "${"%.0f".format(balance.estimatedShare * 100)}% of recent load was estimated " +
+                        "from duration rather than measured, which form amplifies.",
+                )
+            }
+        }
     }
 
     /**

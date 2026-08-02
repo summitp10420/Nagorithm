@@ -8,7 +8,12 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.nagorithm.app.data.Profile
@@ -21,7 +26,15 @@ import com.nagorithm.app.format.formatDuration
 fun EffortSection(snapshot: EffortSnapshot?, profile: Profile?) {
     if (snapshot == null) return
 
-    Text("Effort", style = MaterialTheme.typography.titleMedium)
+    // Collapsed by default. These are the inputs the verdict was computed from, not the product —
+    // a screen that opens on load windows and ratios is the fitness-scientist app this is not.
+    var expanded by rememberSaveable { mutableStateOf(false) }
+
+    TextButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth()) {
+        Text(if (expanded) "Hide effort" else "Show effort")
+    }
+
+    if (!expanded) return
 
     if (!snapshot.hasAnyActivity) {
         Card(modifier = Modifier.fillMaxWidth()) {
