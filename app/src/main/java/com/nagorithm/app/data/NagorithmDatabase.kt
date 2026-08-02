@@ -8,10 +8,14 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [StoredActivity::class, Profile::class, Goal::class, SpokenNag::class],
-    version = 5,
+    version = 6,
     exportSchema = true,
-    // Both only add tables, so Room can write them unaided.
-    autoMigrations = [AutoMigration(from = 3, to = 4), AutoMigration(from = 4, to = 5)],
+    // Tables and a defaulted column only, so Room can write all of these unaided.
+    autoMigrations = [
+        AutoMigration(from = 3, to = 4),
+        AutoMigration(from = 4, to = 5),
+        AutoMigration(from = 5, to = 6),
+    ],
 )
 abstract class NagorithmDatabase : RoomDatabase() {
 

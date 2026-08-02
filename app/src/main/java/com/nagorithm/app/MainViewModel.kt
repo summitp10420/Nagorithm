@@ -15,8 +15,11 @@ import com.nagorithm.app.effort.EffortSnapshot
 import com.nagorithm.app.health.HealthConnectAvailability
 import com.nagorithm.app.health.HealthConnectManager
 import com.nagorithm.app.health.SportCategory
+import com.nagorithm.app.llm.ApiKeyStore
 import com.nagorithm.app.verdict.CheckIn
+import com.nagorithm.app.verdict.Nag
 import com.nagorithm.app.verdict.NagTemplates
+import com.nagorithm.app.verdict.NagTone
 import com.nagorithm.app.verdict.VerdictEngine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -71,6 +74,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    private val apiKeyStore = ApiKeyStore(application)
+
+    /**
+     * Only ever the masked form. The key goes in once and is never read back out to the screen,
+     * so there is nothing to shoulder-read and nothing to catch in a screenshot.
+     */
+    private val _maskedApiKey = MutableStateFlow(apiKeyStore.maskedKey())
+    val maskedApiKey: StateFlow<String?> = _maskedApiKey.asStateFlow()
+
     val requiredPermissions: Set<String> = healthConnect.requiredPermissions
 
     /** Includes background reading, which is optional for syncing but essential for nagging. */
@@ -110,8 +122,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         repository.observeActivities(),
         repository.observeProfile(),
         repository.observeActiveGoal(),
+        repository.observeLatestSpokenNag(),
         _feedAlive,
-    ) { activities, profile, goal, feedAlive ->
+    ) { activities, profile, goal, spoken, feedAlive ->
         val snapshot = EffortSnapshot.from(activities)
         val verdict = VerdictEngine.evaluate(
             activities = activities,
@@ -120,7 +133,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             lastCheckInEpochMillis = profile?.lastCheckInEpochMillis,
             feedAlive = feedAlive,
         )
-        CheckIn(verdict = verdict, nag = NagTemplates.render(verdict))
+
+        // Opening the app after a notification has to show the message that arrived, not a second
+        // wording of the same verdict. Two versions of one judgment reads as the app changing its
+        // mind, and it would mean paying for a model call whose output the user never sees.
+        val stillStands = spoken != null &&
+            spoken.state == verdict.state &&
+            verdict.news.none { it.startTimeEpochMillis > spoken.spokenAtEpochMillis }
+
+        if (stillStands) {
+            CheckIn(
+                verdict = verdict,
+                nag = Nag(spoken!!.headline, spoken.body, spoken.source),
+                spokenReasons = spoken.reasonLines,
+            )
+        } else {
+            CheckIn(verdict = verdict, nag = NagTemplates.render(verdict))
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     init {
@@ -178,6 +207,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 targetDateEpochMillis = targetDateEpochMillis,
             )
         }
+    }
+
+    /** Blank clears it, which is how the user goes back to template nags. */
+    fun saveApiKey(key: String) {
+        apiKeyStore.geminiKey = key
+        _maskedApiKey.value = apiKeyStore.maskedKey()
+    }
+
+    fun setTone(tone: NagTone) {
+        viewModelScope.launch { repository.setTone(tone) }
     }
 
     /** Marks the current nag as read. Everything synced after this counts as news again. */

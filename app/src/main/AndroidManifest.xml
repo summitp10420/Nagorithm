@@ -17,6 +17,12 @@
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!--
+      The only outbound traffic is the user's own key going to their own LLM provider to have a
+      verdict reworded. Health data never leaves the device.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <queries>
         <package android:name="com.google.android.apps.healthdata" />
     </queries>

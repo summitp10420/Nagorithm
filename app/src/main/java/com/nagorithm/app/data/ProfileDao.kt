@@ -3,6 +3,7 @@ package com.nagorithm.app.data
 import androidx.room.Dao
 import androidx.room.Query
 import androidx.room.Upsert
+import com.nagorithm.app.verdict.NagTone
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -31,6 +32,9 @@ interface ProfileDao {
 
     @Query("UPDATE profile SET lastCheckInEpochMillis = :atEpochMillis WHERE userId = :userId")
     suspend fun markCheckedIn(atEpochMillis: Long, userId: String = LOCAL_USER_ID)
+
+    @Query("UPDATE profile SET tone = :tone WHERE userId = :userId")
+    suspend fun setTone(tone: NagTone, userId: String = LOCAL_USER_ID)
 
     /**
      * Only ever fires once. The baseline is what long-term progress is measured against, so

@@ -473,6 +473,8 @@ Deliberately separate, because they change on different timescales:
 
 1. **Profile setup** — age, sex, heart-rate overrides. Runs once at first launch.
 2. **Goals** — the free-text goal and its dimension. Revisited whenever the user wants.
+3. **Voice** — tone and the optional API key. Changes nothing the app knows, only how it
+   says it, which is why it sits apart from both of the above.
 
 ## Resolved
 
@@ -507,6 +509,17 @@ Deliberately separate, because they change on different timescales:
   *average* heart rate to threshold, which badly underscores intervals — twenty minutes hard
   alternating with twenty easy averages out to something moderate. Per-sample summation
   already handles that correctly and is kept.
+- **The model rewords, and is given nothing to reason from.** It receives the finished
+  verdict, the goal text and the audit-trail lines — never sessions. That is a privacy
+  property and a correctness one: a model handed only a conclusion has no material from
+  which to form a different conclusion.
+- **Fabricated numbers fail closed.** Every figure in a reply must trace to one the verdict
+  supplied, rounding aside. One caught invention would discredit every honest number the app
+  has ever shown, so a rejected answer falls back to the template and says so in the audit.
+- **The key is not a dependency.** Without one the app is fully functional and makes no
+  network call. The model is an upgrade to the voice.
+- **The card shows what was said, not a fresh rendering.** Recomputing the wording on open
+  would show a second version of one judgment, which reads as the app changing its mind.
 
 ## Open
 
@@ -519,3 +532,8 @@ Deliberately separate, because they change on different timescales:
   it comes off for lifting.
 - **Yards for swimmers.** Distances are shown in metres because that is what Garmin records,
   but a 914 m swim is a 1000 yard swim to the person who swam it.
+- **Distributing the app.** v1 is bring-your-own-key, which is the only model that needs no
+  server. Billing users against a single shared key is not a settings change: a key shipped
+  inside an APK can be unzipped out of it by anyone, so it would require a proxy holding the
+  key, authenticating users and metering their calls. That is a backend, and the moment one
+  exists the local-only privacy claim has to be restated honestly.

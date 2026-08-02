@@ -24,6 +24,7 @@ import com.nagorithm.app.data.StoredActivity
 import com.nagorithm.app.effort.EffortSnapshot
 import com.nagorithm.app.health.SportCategory
 import com.nagorithm.app.verdict.CheckIn
+import com.nagorithm.app.verdict.NagTone
 
 /**
  * Composition root. The check-in card is the product; everything below it is either the goal that
@@ -38,12 +39,15 @@ fun MainScreen(
     effort: EffortSnapshot?,
     goal: Goal?,
     checkIn: CheckIn?,
+    maskedApiKey: String?,
     requiredPermissions: Set<String>,
     requestablePermissions: Set<String>,
     onCheck: () -> Unit,
     onSync: () -> Unit,
     onSaveProfile: (Int, Sex, Int?, Int?, Int?) -> Unit,
     onSetGoal: (String, GoalDimension, SportCategory?, Double?, Long?) -> Unit,
+    onToneChange: (NagTone) -> Unit,
+    onSaveApiKey: (String) -> Unit,
     onAcknowledge: () -> Unit,
     onNagNow: () -> Unit,
     onRecaptureBaseline: () -> Unit,
@@ -63,7 +67,7 @@ fun MainScreen(
         ) {
             Text("Nagorithm", style = MaterialTheme.typography.headlineMedium)
             Text(
-                text = "Stage 4b — goals and the verdict",
+                text = "Stage 4c — voice and nagging",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -93,6 +97,17 @@ fun MainScreen(
             }
 
             EffortSection(snapshot = effort, profile = profile)
+
+            // Only once there is a profile, since tone is stored on it and there is nothing to
+            // write to before onboarding.
+            if (profile != null) {
+                VoiceSection(
+                    tone = profile.tone,
+                    maskedApiKey = maskedApiKey,
+                    onToneChange = onToneChange,
+                    onSaveApiKey = onSaveApiKey,
+                )
+            }
 
             ProfileSection(state = profileState, onSave = onSaveProfile)
 

@@ -1,7 +1,9 @@
 package com.nagorithm.app.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.nagorithm.app.verdict.NagTone
 
 enum class Sex { MALE, FEMALE }
 
@@ -31,6 +33,13 @@ data class Profile(
      * lets a late-syncing ride still count as something to talk about.
      */
     val lastCheckInEpochMillis: Long? = null,
+
+    /**
+     * How they want to be spoken to. Sits beside the biological facts rather than in preferences
+     * because it is read at exactly the moment a verdict is turned into words, and a second
+     * storage mechanism for one enum earns nothing.
+     */
+    @ColumnInfo(defaultValue = "SNARKY") val tone: NagTone = NagTone.SNARKY,
 
     /** Written once at onboarding. Everything long-term is measured against these. */
     val baselineLoad28Day: Double? = null,

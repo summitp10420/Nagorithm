@@ -19,6 +19,11 @@ interface SpokenNagDao {
     )
     fun observeRecent(limit: Int = 20, userId: String = LOCAL_USER_ID): Flow<List<SpokenNag>>
 
+    @Query(
+        "SELECT * FROM spoken_nags WHERE userId = :userId ORDER BY spokenAtEpochMillis DESC LIMIT 1",
+    )
+    fun observeLatest(userId: String = LOCAL_USER_ID): Flow<SpokenNag?>
+
     /**
      * How many times in a row the same verdict has been delivered. Drives escalation: the third
      * "you have done nothing" in a row should not sound like the first.

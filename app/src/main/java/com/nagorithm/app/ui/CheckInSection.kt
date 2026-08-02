@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.nagorithm.app.verdict.CheckIn
+import com.nagorithm.app.verdict.NagSource
 import com.nagorithm.app.verdict.VerdictState
 
 /**
@@ -59,11 +60,18 @@ fun CheckInSection(checkIn: CheckIn?, onAcknowledge: () -> Unit) {
             if (showReasons) {
                 HorizontalDivider()
                 Text(
-                    text = "Everything the decision used, in the order it was considered. No " +
-                        "part of this came from a language model.",
+                    text = if (checkIn.nag.source == NagSource.MODEL) {
+                        // The distinction the user is owed: a model chose the words, but it was
+                        // handed this reasoning finished and could not add to it.
+                        "Everything the decision used, in the order it was considered. A " +
+                            "language model reworded the message; none of it decided anything."
+                    } else {
+                        "Everything the decision used, in the order it was considered. No part " +
+                            "of this came from a language model."
+                    },
                     style = MaterialTheme.typography.bodySmall,
                 )
-                checkIn.verdict.reasons.forEach { reason ->
+                checkIn.reasons.forEach { reason ->
                     Text(text = "• $reason", style = MaterialTheme.typography.bodySmall)
                 }
             }

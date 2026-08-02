@@ -7,6 +7,7 @@ import com.nagorithm.app.health.ExerciseScanDiagnostics
 import com.nagorithm.app.health.HealthConnectManager
 import com.nagorithm.app.health.SportCategory
 import com.nagorithm.app.verdict.Nag
+import com.nagorithm.app.verdict.NagTone
 import com.nagorithm.app.verdict.Verdict
 import com.nagorithm.app.verdict.VerdictEngine
 import kotlinx.coroutines.flow.Flow
@@ -50,6 +51,8 @@ class ActivityRepository(
 
     suspend fun latestSpokenNag(): SpokenNag? = spokenNagDao.latest()
 
+    fun observeLatestSpokenNag(): Flow<SpokenNag?> = spokenNagDao.observeLatest()
+
     /**
      * Records what was said, so the next verdict knows it has already said it. The schedule's own
      * reasoning is folded into the audit trail because "why now" is as much a part of a nag being
@@ -83,6 +86,8 @@ class ActivityRepository(
 
     suspend fun markCheckedIn(at: Instant = Instant.now()) =
         profileDao.markCheckedIn(at.toEpochMilli())
+
+    suspend fun setTone(tone: NagTone) = profileDao.setTone(tone)
 
     /**
      * Replaces the active goal rather than editing it. A goal carries the value it was measured

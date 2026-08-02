@@ -18,9 +18,27 @@ v1 is local-only: no backend, no cloud storage, single user.
 - Decides between resting, drifting, losing fitness, holding steady, progressing, or
   ramping too hard, and writes a plain-language nag from that decision.
 - Shows the full derivation behind every nag under "Why this nag?".
+- Nags you unprompted. A background worker syncs, forms the verdict and decides whether it is
+  worth interrupting you over, then posts a notification.
+- Optionally has Gemini reword the nag in a tone you pick. Without a key you still get nagged,
+  just in stock wording.
 
-Not built yet: the LLM wording layer, tone selection, background sync, and notifications.
 See [docs/nag-engine.md](docs/nag-engine.md) for the design and the reasoning behind it.
+
+## The model chooses words, never meaning
+
+The verdict is decided before a language model is involved, and the model is handed the
+finished conclusion rather than the data behind it. It sees the verdict state, your goal in
+your own words, the audit-trail reason lines and a plain draft — never a session, a
+timestamp or a heart rate. Health data does not leave the device.
+
+Every figure in the reply is then checked against the figures the verdict supplied. Rounding
+is allowed; anything else sends the whole message back and the template goes out instead,
+with the rejection recorded in the audit trail. A fabricated statistic is worse than no
+message at all, because it is indistinguishable from the real ones sitting beside it.
+
+Every path produces a nag. No key, no signal, a retired model, a rejected answer — the
+template ships and the app works having made no network call.
 
 ## Requirements
 
@@ -48,7 +66,9 @@ covered by JVM unit tests rather than by squinting at a phone.
 | `health` | Health Connect reads, sport taxonomy, raw session summaries |
 | `data` | Room entities, DAOs, and the repository that syncs and scores |
 | `effort` | Training load, the fitted speed curve, efficiency factor |
-| `verdict` | The decision, its audit trail, and the template wording |
+| `verdict` | The decision, its audit trail, the template wording, and when to speak |
+| `llm` | API key storage, prompt building, the Gemini call, and the numeric guard |
+| `work` | The background worker and the notification it posts |
 | `format` | Value formatting shared by the UI and the nag templates |
 | `ui` | Compose screens |
 
@@ -57,7 +77,7 @@ goals, and `verdict` decides everything the wording layer is later allowed to sa
 
 ### Database
 
-Room, currently at version 4, with schemas exported to `app/schemas` and real migrations
+Room, currently at version 6, with schemas exported to `app/schemas` and real migrations
 from version 3 onward. Destructive migration is deliberately restricted to versions 1 and 2:
 past those, the database holds activity history reaching further back than Health Connect
 will re-serve, plus onboarding baselines that are written once and cannot be recomputed.
@@ -65,17 +85,27 @@ will re-serve, plus onboarding baselines that are written once and cannot be rec
 | Entity | Purpose |
 | --- | --- |
 | `StoredActivity` | One session, deduped on Health Connect's record id, with its load score and the inputs behind it |
-| `Profile` | Age, sex, heart-rate values and overrides, onboarding baseline, last check-in |
+| `Profile` | Age, sex, heart-rate values and overrides, onboarding baseline, last check-in, tone |
 | `Goal` | Goal text, its dimension, and the starting value that dimension is measured from |
+| `SpokenNag` | What was actually said and why, so escalation, repetition and the audit trail survive the process that produced them |
+
+The Gemini key is not in Room. It lives in `EncryptedSharedPreferences` under a
+hardware-backed key, because a billable credential should not end up in a database backup.
 
 ## Health Connect permissions
 
 Read-only access to `READ_EXERCISE`, `READ_DISTANCE`, `READ_HEART_RATE`,
-`READ_RESTING_HEART_RATE`, `READ_SPEED`, and `READ_STEPS`.
+`READ_RESTING_HEART_RATE`, `READ_SPEED`, and `READ_STEPS`, plus
+`READ_HEALTH_DATA_IN_BACKGROUND`. The last is granted separately and easily refused; without
+it the app can only read while open, which would make it a check-in screen rather than a nag
+engine.
 
 Steps and heart rate are also read as a liveness probe. An empty exercise list looks
 identical whether you rested or the sync broke, and the difference decides whether the app
 is entitled to have an opinion about it.
+
+Outside Health Connect it needs `POST_NOTIFICATIONS` to nag, and `INTERNET` only so your own
+key can reach your own LLM provider.
 
 ## Build stages
 
@@ -89,4 +119,9 @@ Each stage was verified on a real device before the next began.
 5. **b. Goals and the verdict** — goal capture, fitted speed curve, efficiency factor,
    local verdict, template nags, "Why this nag?". *(done)*
 6. **c. Voice and nagging** — API key in `EncryptedSharedPreferences`, tone selection,
-   LLM-written wording over the local verdict, background sync, notifications. *(next)*
+   LLM-written wording over the local verdict, background sync, notifications. *(done)*
+
+Still open: swim load scored from the fitted threshold speed rather than an assumed zone,
+and a distribution story. Bring-your-own-key is the only model that needs no server; billing
+users against a shared key would require a proxy, because a key inside an APK can be
+unzipped out of it.

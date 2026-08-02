@@ -14,9 +14,11 @@ import com.nagorithm.app.data.NagorithmDatabase
 import com.nagorithm.app.effort.EffortSnapshot
 import com.nagorithm.app.health.HealthConnectAvailability
 import com.nagorithm.app.health.HealthConnectManager
+import com.nagorithm.app.llm.ApiKeyStore
+import com.nagorithm.app.llm.GeminiClient
+import com.nagorithm.app.llm.NagWriter
 import com.nagorithm.app.verdict.NagDecision
 import com.nagorithm.app.verdict.NagSchedule
-import com.nagorithm.app.verdict.NagTemplates
 import com.nagorithm.app.verdict.VerdictEngine
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -78,16 +80,18 @@ class NagWorker(context: Context, params: WorkerParameters) : CoroutineWorker(co
         }
         if (!decision.speak) return Result.success()
 
-        val nag = NagTemplates.render(verdict)
-        val notified = NagNotifier.post(applicationContext, nag)
+        val key = ApiKeyStore(applicationContext).geminiKey
+        val written = NagWriter(key?.let(::GeminiClient)).write(verdict, profile.tone)
+        val notified = NagNotifier.post(applicationContext, written.nag)
 
         repository.recordSpokenNag(
             verdict = verdict,
-            nag = nag,
+            nag = written.nag,
             notified = notified,
             // Why it spoke now belongs in the audit trail as much as what it decided, since a nag
-            // arriving at the wrong moment is its own kind of wrong.
-            scheduleReason = decision.reason,
+            // arriving at the wrong moment is its own kind of wrong. So does how it got worded,
+            // because a template appearing where a model answer was expected is a symptom.
+            scheduleReason = "${decision.reason} ${written.note}",
             at = now,
         )
 
