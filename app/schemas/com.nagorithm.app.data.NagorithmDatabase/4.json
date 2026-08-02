@@ -1,0 +1,331 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 4,
+    "identityHash": "1966b9168a92e37d9b2382a8646c131b",
+    "entities": [
+      {
+        "tableName": "activities",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`recordId` TEXT NOT NULL, `userId` TEXT NOT NULL, `startTimeEpochMillis` INTEGER NOT NULL, `endTimeEpochMillis` INTEGER NOT NULL, `zoneOffsetSeconds` INTEGER, `title` TEXT, `exerciseType` INTEGER NOT NULL, `isIndoor` INTEGER NOT NULL, `activeDurationSeconds` INTEGER, `distanceMeters` REAL, `averageHeartRateBpm` INTEGER, `sourcePackage` TEXT NOT NULL, `firstSeenEpochMillis` INTEGER NOT NULL, `peakHeartRateBpm` INTEGER, `hrSampleCount` INTEGER NOT NULL, `loadHrss` REAL, `loadModel` TEXT, `loadRestingHr` INTEGER, `loadMaxHr` INTEGER, `loadThresholdHr` INTEGER, `loadAssumedReserve` REAL, PRIMARY KEY(`recordId`))",
+        "fields": [
+          {
+            "fieldPath": "recordId",
+            "columnName": "recordId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "userId",
+            "columnName": "userId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startTimeEpochMillis",
+            "columnName": "startTimeEpochMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endTimeEpochMillis",
+            "columnName": "endTimeEpochMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "zoneOffsetSeconds",
+            "columnName": "zoneOffsetSeconds",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "exerciseType",
+            "columnName": "exerciseType",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isIndoor",
+            "columnName": "isIndoor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "activeDurationSeconds",
+            "columnName": "activeDurationSeconds",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "distanceMeters",
+            "columnName": "distanceMeters",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "averageHeartRateBpm",
+            "columnName": "averageHeartRateBpm",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "sourcePackage",
+            "columnName": "sourcePackage",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "firstSeenEpochMillis",
+            "columnName": "firstSeenEpochMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "peakHeartRateBpm",
+            "columnName": "peakHeartRateBpm",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "hrSampleCount",
+            "columnName": "hrSampleCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "load.hrss",
+            "columnName": "loadHrss",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "load.model",
+            "columnName": "loadModel",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "load.restingHr",
+            "columnName": "loadRestingHr",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "load.maxHr",
+            "columnName": "loadMaxHr",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "load.thresholdHr",
+            "columnName": "loadThresholdHr",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "load.assumedReserve",
+            "columnName": "loadAssumedReserve",
+            "affinity": "REAL"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "recordId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_activities_userId_startTimeEpochMillis",
+            "unique": false,
+            "columnNames": [
+              "userId",
+              "startTimeEpochMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_activities_userId_startTimeEpochMillis` ON `${TABLE_NAME}` (`userId`, `startTimeEpochMillis`)"
+          }
+        ]
+      },
+      {
+        "tableName": "profile",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`userId` TEXT NOT NULL, `age` INTEGER NOT NULL, `sex` TEXT NOT NULL, `restingHrOverride` INTEGER, `maxHrOverride` INTEGER, `thresholdHrOverride` INTEGER, `detectedRestingHr` INTEGER, `detectedMaxHr` INTEGER, `onboardedAtEpochMillis` INTEGER NOT NULL, `lastCheckInEpochMillis` INTEGER, `baselineLoad28Day` REAL, `baselineCapabilityName` TEXT, `baselineCapabilityValue` REAL, `baselineCapabilityUnit` TEXT, PRIMARY KEY(`userId`))",
+        "fields": [
+          {
+            "fieldPath": "userId",
+            "columnName": "userId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "age",
+            "columnName": "age",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sex",
+            "columnName": "sex",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "restingHrOverride",
+            "columnName": "restingHrOverride",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "maxHrOverride",
+            "columnName": "maxHrOverride",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "thresholdHrOverride",
+            "columnName": "thresholdHrOverride",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "detectedRestingHr",
+            "columnName": "detectedRestingHr",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "detectedMaxHr",
+            "columnName": "detectedMaxHr",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "onboardedAtEpochMillis",
+            "columnName": "onboardedAtEpochMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastCheckInEpochMillis",
+            "columnName": "lastCheckInEpochMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "baselineLoad28Day",
+            "columnName": "baselineLoad28Day",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "baselineCapabilityName",
+            "columnName": "baselineCapabilityName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "baselineCapabilityValue",
+            "columnName": "baselineCapabilityValue",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "baselineCapabilityUnit",
+            "columnName": "baselineCapabilityUnit",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "userId"
+          ]
+        }
+      },
+      {
+        "tableName": "goals",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `userId` TEXT NOT NULL, `text` TEXT NOT NULL, `dimension` TEXT NOT NULL, `sport` TEXT, `targetDistanceMeters` REAL, `targetDateEpochMillis` INTEGER, `createdAtEpochMillis` INTEGER NOT NULL, `archivedAtEpochMillis` INTEGER, `startValue` REAL, `startUnit` TEXT, `startBucketMeters` REAL, `startCapturedAt` INTEGER)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "userId",
+            "columnName": "userId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "text",
+            "columnName": "text",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dimension",
+            "columnName": "dimension",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sport",
+            "columnName": "sport",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "targetDistanceMeters",
+            "columnName": "targetDistanceMeters",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "targetDateEpochMillis",
+            "columnName": "targetDateEpochMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "createdAtEpochMillis",
+            "columnName": "createdAtEpochMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "archivedAtEpochMillis",
+            "columnName": "archivedAtEpochMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "start.value",
+            "columnName": "startValue",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "start.unit",
+            "columnName": "startUnit",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "start.bucketMeters",
+            "columnName": "startBucketMeters",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "start.capturedAtEpochMillis",
+            "columnName": "startCapturedAt",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_goals_userId_archivedAtEpochMillis",
+            "unique": false,
+            "columnNames": [
+              "userId",
+              "archivedAtEpochMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_goals_userId_archivedAtEpochMillis` ON `${TABLE_NAME}` (`userId`, `archivedAtEpochMillis`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '1966b9168a92e37d9b2382a8646c131b')"
+    ]
+  }
+}

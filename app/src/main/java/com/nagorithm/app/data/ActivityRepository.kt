@@ -5,6 +5,8 @@ import com.nagorithm.app.effort.HrssCalculator
 import com.nagorithm.app.effort.peakHeartRate
 import com.nagorithm.app.health.ExerciseScanDiagnostics
 import com.nagorithm.app.health.HealthConnectManager
+import com.nagorithm.app.health.SportCategory
+import com.nagorithm.app.verdict.VerdictEngine
 import kotlinx.coroutines.flow.Flow
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -17,6 +19,8 @@ data class SyncResult(
     val scoredFromEstimate: Int,
     val detectedRestingHr: Int?,
     val detectedMaxHr: Int?,
+    /** False means Health Connect had no passive data either, so silence is not the user's fault. */
+    val feedAlive: Boolean,
     val diagnostics: ExerciseScanDiagnostics,
 )
 
@@ -24,17 +28,66 @@ class ActivityRepository(
     private val healthConnect: HealthConnectManager,
     private val activityDao: ActivityDao,
     private val profileDao: ProfileDao,
+    private val goalDao: GoalDao,
 ) {
 
     fun observeActivities(): Flow<List<StoredActivity>> = activityDao.observeActivities()
 
     fun observeProfile(): Flow<Profile?> = profileDao.observeProfile()
 
+    fun observeActiveGoal(): Flow<Goal?> = goalDao.observeActiveGoal()
+
     suspend fun currentProfile(): Profile? = profileDao.profile()
 
     suspend fun saveProfile(profile: Profile) = profileDao.save(profile)
 
     suspend fun clearBaseline() = profileDao.clearBaseline()
+
+    suspend fun markCheckedIn(at: Instant = Instant.now()) =
+        profileDao.markCheckedIn(at.toEpochMilli())
+
+    /**
+     * Replaces the active goal rather than editing it. A goal carries the value it was measured
+     * from, so changing its dimension in place would leave a starting number that answers a
+     * question nobody asked any more.
+     */
+    suspend fun setGoal(
+        text: String,
+        dimension: GoalDimension,
+        sport: SportCategory?,
+        targetDistanceMeters: Double?,
+        targetDateEpochMillis: Long?,
+    ) {
+        val now = Instant.now()
+        goalDao.archiveActive(now.toEpochMilli())
+
+        val activities = activityDao.allActivities()
+        val start = VerdictEngine.measure(
+            dimension = dimension,
+            sport = sport,
+            activities = activities,
+            snapshot = EffortSnapshot.from(activities, now),
+        )
+
+        goalDao.insert(
+            Goal(
+                text = text,
+                dimension = dimension,
+                sport = sport,
+                targetDistanceMeters = targetDistanceMeters,
+                targetDateEpochMillis = targetDateEpochMillis,
+                createdAtEpochMillis = now.toEpochMilli(),
+                start = start?.let {
+                    GoalBaseline(
+                        value = it.value,
+                        unit = it.unit,
+                        bucketMeters = it.bucketMeters,
+                        capturedAtEpochMillis = now.toEpochMilli(),
+                    )
+                },
+            ),
+        )
+    }
 
     suspend fun syncFromHealthConnect(from: Instant, to: Instant): SyncResult {
         val fetch = healthConnect.readAerobicSessions(from, to)
@@ -96,22 +149,49 @@ class ActivityRepository(
             scoredFromEstimate = estimated,
             detectedRestingHr = restingHr,
             detectedMaxHr = maxHr,
+            feedAlive = fetch.activities.isNotEmpty() ||
+                healthConnect.hasPassiveData(to.minus(FEED_PROBE_DAYS, ChronoUnit.DAYS), to),
             diagnostics = fetch.diagnostics,
         )
     }
 
     private suspend fun captureBaselineIfAbsent() {
-        val snapshot = EffortSnapshot.from(activityDao.allActivities())
+        val activities = activityDao.allActivities()
+        val snapshot = EffortSnapshot.from(activities)
         if (!snapshot.hasAnyActivity) return
+
         profileDao.captureBaselineIfAbsent(
             load28Day = snapshot.chronic.totalLoad,
             capabilityName = "Longest session",
             capabilityValue = snapshot.longestEverBySport.values.maxOrNull(),
             capabilityUnit = "m",
         )
+
+        // A goal set before the first sync has nothing to measure from. This is the first moment
+        // it can be given a starting value, and the DAO guard keeps it from ever being retaken.
+        val goal = goalDao.activeGoal() ?: return
+        if (goal.start != null) return
+
+        VerdictEngine.measure(
+            dimension = goal.dimension,
+            sport = goal.sport,
+            activities = activities,
+            snapshot = snapshot,
+        )?.let {
+            goalDao.captureBaselineIfAbsent(
+                goalId = goal.id,
+                value = it.value,
+                unit = it.unit,
+                bucketMeters = it.bucketMeters,
+                capturedAtEpochMillis = Instant.now().toEpochMilli(),
+            )
+        }
     }
 
     private companion object {
         const val RESTING_HR_WINDOW_DAYS = 30L
+
+        /** Short enough that a feed which died this week is caught before the next nag. */
+        const val FEED_PROBE_DAYS = 3L
     }
 }

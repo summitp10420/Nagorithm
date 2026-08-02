@@ -17,13 +17,17 @@ import androidx.compose.ui.unit.dp
 import com.nagorithm.app.HealthConnectUiState
 import com.nagorithm.app.ProfileUiState
 import com.nagorithm.app.SyncUiState
+import com.nagorithm.app.data.Goal
+import com.nagorithm.app.data.GoalDimension
 import com.nagorithm.app.data.Sex
 import com.nagorithm.app.data.StoredActivity
 import com.nagorithm.app.effort.EffortSnapshot
+import com.nagorithm.app.health.SportCategory
+import com.nagorithm.app.verdict.CheckIn
 
 /**
- * Composition root for the single screen that exists so far. Everything below the effort readout
- * is a verification harness rather than product, and lives behind the diagnostics section.
+ * Composition root. The check-in card is the product; everything below it is either the goal that
+ * gives the card something to judge against, or a verification harness for the numbers it quotes.
  */
 @Composable
 fun MainScreen(
@@ -32,10 +36,14 @@ fun MainScreen(
     storedActivities: List<StoredActivity>,
     profileState: ProfileUiState,
     effort: EffortSnapshot?,
+    goal: Goal?,
+    checkIn: CheckIn?,
     requiredPermissions: Set<String>,
     onCheck: () -> Unit,
     onSync: () -> Unit,
     onSaveProfile: (Int, Sex, Int?, Int?, Int?) -> Unit,
+    onSetGoal: (String, GoalDimension, SportCategory?, Double?, Long?) -> Unit,
+    onAcknowledge: () -> Unit,
     onRecaptureBaseline: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -53,14 +61,18 @@ fun MainScreen(
         ) {
             Text("Nagorithm", style = MaterialTheme.typography.headlineMedium)
             Text(
-                text = "Stage 4a — local effort scoring",
+                text = "Stage 4b — goals and the verdict",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            ProfileSection(state = profileState, onSave = onSaveProfile)
+            CheckInSection(checkIn = checkIn, onAcknowledge = onAcknowledge)
 
-            EffortSection(snapshot = effort, profile = profile)
+            GoalSection(
+                goal = goal,
+                progress = checkIn?.verdict?.goalProgress,
+                onSetGoal = onSetGoal,
+            )
 
             if (canSync) {
                 Button(
@@ -77,6 +89,10 @@ fun MainScreen(
                     )
                 }
             }
+
+            EffortSection(snapshot = effort, profile = profile)
+
+            ProfileSection(state = profileState, onSave = onSaveProfile)
 
             DiagnosticsSection(
                 state = state,

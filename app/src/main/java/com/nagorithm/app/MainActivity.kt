@@ -22,6 +22,8 @@ class MainActivity : ComponentActivity() {
                 val storedActivities by viewModel.storedActivities.collectAsStateWithLifecycle()
                 val profileState by viewModel.profileState.collectAsStateWithLifecycle()
                 val effort by viewModel.effort.collectAsStateWithLifecycle()
+                val goal by viewModel.activeGoal.collectAsStateWithLifecycle()
+                val checkIn by viewModel.checkIn.collectAsStateWithLifecycle()
 
                 MainScreen(
                     state = state,
@@ -29,10 +31,14 @@ class MainActivity : ComponentActivity() {
                     storedActivities = storedActivities,
                     profileState = profileState,
                     effort = effort,
+                    goal = goal,
+                    checkIn = checkIn,
                     requiredPermissions = viewModel.requiredPermissions,
                     onCheck = viewModel::checkHealthConnect,
                     onSync = viewModel::sync,
                     onSaveProfile = viewModel::saveProfile,
+                    onSetGoal = viewModel::setGoal,
+                    onAcknowledge = viewModel::acknowledgeCheckIn,
                     onRecaptureBaseline = viewModel::recaptureBaseline,
                 )
             }

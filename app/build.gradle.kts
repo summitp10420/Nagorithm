@@ -73,4 +73,8 @@ dependencies {
     ksp(libs.androidx.room.compiler)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
+
+    // The load, pace and verdict maths is pure Kotlin on purpose, so it can be checked here
+    // rather than by squinting at a phone.
+    testImplementation(libs.junit)
 }

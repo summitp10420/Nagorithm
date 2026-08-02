@@ -14,6 +14,8 @@ import androidx.compose.ui.unit.dp
 import com.nagorithm.app.data.Profile
 import com.nagorithm.app.effort.EffortSnapshot
 import com.nagorithm.app.effort.LoadWindow
+import com.nagorithm.app.format.formatDistance
+import com.nagorithm.app.format.formatDuration
 
 @Composable
 fun EffortSection(snapshot: EffortSnapshot?, profile: Profile?) {

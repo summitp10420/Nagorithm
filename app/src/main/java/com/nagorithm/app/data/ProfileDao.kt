@@ -29,6 +29,9 @@ interface ProfileDao {
         userId: String = LOCAL_USER_ID,
     )
 
+    @Query("UPDATE profile SET lastCheckInEpochMillis = :atEpochMillis WHERE userId = :userId")
+    suspend fun markCheckedIn(atEpochMillis: Long, userId: String = LOCAL_USER_ID)
+
     /**
      * Only ever fires once. The baseline is what long-term progress is measured against, so
      * recomputing it would erase the progress it exists to show.

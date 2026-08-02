@@ -26,6 +26,12 @@ data class Profile(
 
     val onboardedAtEpochMillis: Long,
 
+    /**
+     * When the user last saw a verdict. Sessions first seen after this are news, which is what
+     * lets a late-syncing ride still count as something to talk about.
+     */
+    val lastCheckInEpochMillis: Long? = null,
+
     /** Written once at onboarding. Everything long-term is measured against these. */
     val baselineLoad28Day: Double? = null,
     val baselineCapabilityName: String? = null,

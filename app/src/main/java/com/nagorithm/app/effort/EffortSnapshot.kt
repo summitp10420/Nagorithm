@@ -70,6 +70,8 @@ data class EffortSnapshot(
     val longestGapDays: Long?,
     val longestEverBySport: Map<SportCategory, Double>,
     val hasAnyActivity: Boolean,
+    /** Oldest stored session to now. Every ratio below is noise until this is wide enough. */
+    val historySpanDays: Long?,
 ) {
     /**
      * Acute-to-chronic workload ratio. Self-normalizing, so the same thresholds work for someone
@@ -77,9 +79,18 @@ data class EffortSnapshot(
      */
     val acwr: Double? get() = chronic.loadPerWeek.takeIf { it > 0.0 }?.let { acute.totalLoad / it }
 
+    /**
+     * A ratio needs a denominator built from a full chronic block. Health Connect only serves 30
+     * days to begin with, so early on the 28-day figure is really "everything there is", and
+     * comparing 7 days against it always looks like a taper.
+     */
+    val isColdStart: Boolean
+        get() = (historySpanDays ?: 0L) < MINIMUM_HISTORY_DAYS || chronic.activityCount < 4
+
     companion object {
         const val ACUTE_DAYS = 7L
         const val CHRONIC_DAYS = 28L
+        const val MINIMUM_HISTORY_DAYS = 21L
 
         fun from(
             activities: List<StoredActivity>,
@@ -96,6 +107,8 @@ data class EffortSnapshot(
                 .mapValues { (_, list) -> list.mapNotNull { it.distanceMeters }.maxOrNull() ?: 0.0 }
                 .filterValues { it > 0.0 },
             hasAnyActivity = activities.isNotEmpty(),
+            historySpanDays = activities.minOfOrNull { it.startTimeEpochMillis }
+                ?.let { ChronoUnit.DAYS.between(Instant.ofEpochMilli(it), now) },
         )
 
         fun window(activities: List<StoredActivity>, now: Instant, days: Long): LoadWindow {

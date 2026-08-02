@@ -1,7 +1,11 @@
 # Nag engine design
 
-Design notes for Stages 3 and 4. **Nothing here is built yet.** Recorded now because it
-changes the Stage 3 database schema.
+Design notes and the reasoning behind them.
+
+**Status.** Effort scoring, goals, the progress model and the local verdict are built and
+running on a device. The wording layer is still templates; tone selection, the LLM call,
+background sync and notifications are not built. Sections below are marked where they
+describe intent rather than code.
 
 ## Principle
 
@@ -9,8 +13,26 @@ Nagorithm is not an activity tracker. It is a judgment engine: it knows the user
 measures what they have done since it last spoke to them, decides whether that is good
 enough, and adjusts how hard it pushes. Ride data is input to a verdict, never the output.
 
-The ride list built in Stage 2 is a verification harness. Once Stage 4 lands it moves
-behind a debug toggle or disappears.
+The activity list is a verification harness and lives behind a collapsed diagnostics
+section.
+
+## The app must never overstate what it knows
+
+This is the constraint everything else bends around, and it earned its place twice on the
+first device run of the verdict engine.
+
+It told a user doing about two hours a week to ease off, because the acute-to-chronic ratio
+was 2.10. The ratio was correct and the advice was ridiculous. Then it congratulated a swim
+for being 24.2% better than predicted, off a curve fitted through two points, where the
+line necessarily passes exactly through both and no residual remains to say whether the
+model fits anything at all.
+
+Both failures ran the same direction: confident arithmetic on thin evidence. That is the
+failure that gets a nagging app deleted, because a single obviously wrong verdict discredits
+every correct one that follows. So every signal carries a competence boundary — an absolute
+floor beneath a ratio, a minimum number of points beneath a fit, a distance range outside
+which a curve may not be extrapolated — and below that boundary the app states facts without
+sizing them.
 
 ## Scope: aerobic goals only
 
@@ -157,17 +179,31 @@ for motivation, not injury risk.
 Alongside the scores, every window reports plain counts the user can sanity check: ride
 count, total moving time, total distance.
 
-## No target. Progress from where you started.
+## No target. The goal chooses the yardstick.
 
 There is deliberately no weekly number to hit. An absolute target punishes a beginner for
 being a beginner and lets a strong rider coast. What matters is movement from the user's
 own starting point.
 
-The goal is not converted into a target. It supplies framing — a century goal makes long
-rides the interesting axis — and eventually a readiness judgment.
+The goal is not converted into a target. It selects **which measurement becomes the
+baseline**, and that baseline is always the user's own earlier value of it:
 
-Consequence: the app must snapshot the user's load at onboarding, so it can later say
-"you have gone from there to here." That baseline is stored once and never recomputed.
+| Dimension | Goal sounds like | Measured as |
+| --- | --- | --- |
+| Distance | ride a century, finish a 5k | longest single effort |
+| Pace | six minute mile, sub-20 5k | predicted time over a fixed distance |
+| Volume | trim up, stop falling apart | 28-day load expressed per week |
+
+A century and a first 5k are the same arithmetic pointed at different columns.
+
+The starting value is captured when the goal is set and never recomputed. Re-deriving it
+would move the finish line every time the user improved, which is the exact failure the
+no-target model exists to avoid. It lives on the goal rather than the profile, because a
+pace goal and a distance goal start from different numbers on the same day.
+
+A goal set before any qualifying activity exists has no starting value. That is a real
+state rather than an error: it means there is nothing to measure from yet, and the verdict
+has to say so instead of inventing a baseline.
 
 ## Cold start: the first weeks lie
 
@@ -181,11 +217,11 @@ ratio. The first real device run produced an ACWR of 1.95, reading "ramping hard
 single ordinary ride sitting on top of a truncated baseline. That is arithmetically correct
 and behaviourally wrong.
 
-So the verdict must know how much history it is standing on and hedge accordingly. Until
-roughly a full chronic window of locally observed data exists, short-term ratio signals are
-suppressed in favour of the ones that survive a cold start: days since last session, and
-session count. Long-term signals are meaningless anyway before time passes — the onboarding
-baseline necessarily reads 100% on the day it is captured.
+So the verdict knows how much history it is standing on and hedges accordingly. Until there
+are at least three weeks of locally observed data across at least four sessions, ratio
+signals are suppressed in favour of the ones that survive a cold start: days since the last
+session, and session count. Long-term signals are meaningless anyway before time passes —
+the onboarding baseline necessarily reads 100% on the day it is captured.
 
 This is not a rare edge case. Every user hits it, on day one, which is the single worst
 moment to deliver a confidently wrong verdict.
@@ -203,38 +239,154 @@ This path must never be gated behind having enough data to compute anything else
 new user with an empty database and no goal set still gets nagged on day four. And the
 suggestion should not be sport-purist — go for a walk, do anything.
 
-## Aerobic fitness trend
+## Am I getting fitter?
 
-For goals with no finish line ("get faster", "trim up"), improvement itself is the signal.
-Two measures, both from data already being read:
+Load cannot answer this. Someone improving and someone grinding themselves into the ground
+both post high numbers — load measures cost, not return. Progress needs a separate model.
 
-- **Efficiency factor** — distance covered per heartbeat. Rising over time means the same
-  effort is buying more speed, which is exactly what getting fitter means. Noisy per ride:
-  hills, wind, stops, and indoor rides with no distance all corrupt it. Only meaningful as
-  a trend across many rides, and should stay hidden until there is enough history to be
-  honest.
-- **Resting heart rate trend** — falling means improving aerobic fitness. Nearly free,
-  since the permission is already needed for HRSS and Garmin already writes it.
+### Why not buckets
 
-Resting heart rate is also bidirectional in a useful way. A *rising* resting HR usually
-means accumulated fatigue or illness, which is precisely when the app should tell the user
-to rest rather than calling them lazy. The load math alone cannot see that.
+The first attempt grouped sessions by distance so that pace could be compared like with
+like, since pace across different distances is meaningless. That was the wrong tool, and it
+failed twice over.
+
+It first failed on boundaries: bucket indices computed from a logarithm lay down a fixed
+grid, so a 40.0 km and a 41.5 km ride — under 4% apart — landed either side of a line and
+were never compared, while 40.0 and 45.9 grouped happily. Clustering by actual proximity
+fixed that. But the deeper problem survived: bucketing can only ever speak about distances
+you have repeated, and it discards everything else. Real training is full of one-off
+distances.
+
+The platforms this app is measured against do not bucket. They fit a threshold and track
+how it moves.
+
+### Fitted speed curve
+
+Over hard efforts, distance is close to linear in duration:
+
+```
+distance = criticalSpeed × time + reserve
+```
+
+Fitting that line means a 900 m swim and a 1400 m swim both inform the same estimate. No
+session is discarded for being an unusual length, and there are no boundaries to fall either
+side of. It is the same model behind Critical Swim Speed and functional threshold power.
+
+The fit is only honest if each point is a genuinely hard effort for its duration, which
+training sessions are not. So it is fitted to the upper envelope — the furthest covered at
+each duration — rather than the whole scatter. An easy hour is then evidence of nothing
+rather than evidence of decline.
+
+Two guards keep it from overstating itself. A fit through fewer than three points is not
+allowed to quote a percentage, because with two points and two parameters the line passes
+exactly through both and there is no residual left to measure error with. And it may not
+predict far outside the distances actually recorded, because that is where a straight line
+stops describing physiology.
+
+New sessions are judged against a curve fitted **without them**. Including a session in its
+own baseline would let a breakthrough quietly explain itself away.
+
+Because the same line predicts a time at any distance, the abstraction can be converted
+back into something recognisable before it reaches the user: not "critical speed rose to
+0.89 m/s" but "your 1000 m is worth 18:40 now, against 19:22 a month ago."
+
+### Efficiency factor
+
+Speed per heartbeat: distance over time over average heart rate. Going faster at the same
+heart rate is the cleanest evidence of aerobic improvement there is, and because both terms
+are rates it does not care how long the session was.
+
+Swimming is excluded outright — the heart rate is missing or wrong, for the same reason load
+scoring ignores stray swim samples.
+
+### The two cover each other's gaps
+
+This is the useful part. The speed curve wants clean distance and tolerates absent heart
+rate; efficiency wants heart rate and tolerates a messy route.
+
+- **Pool swims and ergs** — a fixed, windless, flat distance every time, and never any
+  usable heart rate. The curve is at its best exactly where load is at its worst.
+- **Road rides and runs** — heart rate is reliable, distance is corrupted by hills and wind.
+  Efficiency carries these.
+
+Outdoor cycling pace remains genuinely noisy because elevation is not read. That is a larger
+source of error than the bucketing bug ever was, and it is unaddressed.
+
+### Resting heart rate trend *(not built)*
+
+Falling means improving aerobic fitness, and it is nearly free since the permission is
+already needed for HRSS. It is also bidirectional in a useful way: a *rising* resting heart
+rate usually means accumulated fatigue or illness, which is precisely when the app should
+tell the user to rest rather than calling them lazy.
+
+Blocked on hardware rather than code — Garmin does not write resting heart rate to Health
+Connect, confirmed on device.
 
 ## Verdict
 
-Four locally computed signals, all relative:
+One of seven states, decided locally. The wording layer may only choose how to say the one
+that came back; it never gets to pick which is true.
 
-1. **Consistency** — days since the last ride, rides in the last 7 days against the user's
-   own typical frequency, longest gap in the window.
-2. **Short term** — 7-day load over the 28-day weekly baseline. Are they working right now
-   relative to their own normal?
-3. **Long term** — the current 28-day baseline over the onboarding baseline. Is the floor
-   actually rising, or has consistency plateaued into a comfortable rut?
-4. **Capability** — longest single ride in the last 28 days against their longest ever.
-   For distance goals this is the binding constraint; weekly volume alone does not make
-   someone century-ready.
+| State | Meaning |
+| --- | --- |
+| `FEED_SILENT` | Health Connect returned nothing, including passive data. Not the user's fault |
+| `COLD_START` | Too little history for any trend to mean anything |
+| `RESTING` | Inside the recovery window for the load being carried |
+| `IDLE` | Past the point where absence costs fitness |
+| `STEADY` | Work going in, nothing measurably changed. The common case |
+| `PROGRESSING` | Something improved in the dimension the goal cares about |
+| `RAMPING_HARD` | Acute load well above what the base supports |
 
-Direction comes from these together, not from a compliance check.
+### Two modes, and the quiet one carries the app
+
+At a cadence of every couple of days, most check-ins have no news, because fitness moves on
+a scale of weeks. So the honest design has two shapes:
+
+- **News** — a session arrived. Say what it did to the number the goal depends on, up or
+  down.
+- **No news** — say where things stand, then say go and do something.
+
+The no-news case is the frequent one, which means consistency carries more of the product
+than the progress analysis does. The analysis is the occasional payoff.
+
+`RAMPING_HARD` exists so the news case can come back negative. If the verdict can only ever
+congratulate, it is a cheerleader, and the user stops believing it — which costs the times
+it says something true.
+
+### News survives a late sync
+
+News is measured by when the app *first saw* a session, not when the session happened.
+Garmin can deliver a ride days late, and a session that arrives after its window was judged
+is still new information to the user.
+
+## Stagnation: detect it, do not diagnose it
+
+Detecting absence is trivial — nothing came in. Attributing it is impossible: a plateau, a
+taper, illness, a holiday and simple laziness look identical from here.
+
+The resolution is that attribution is unnecessary. Two weeks off costs the same whether the
+user was sick or scrolling; the physiology does not care why. So the app detects the fact
+and lets tone handle the uncertainty, rather than diagnosing a cause it cannot see.
+
+Detraining is not a fixed clock either. Someone carrying 400 HRSS a week sheds more in ten
+days than someone at 80, because they built more that needs maintaining. So the tolerance
+before absence starts costing something scales with chronic load — three days at the top
+end, seven at the bottom — and past that the bands are drifting, losing, and gone soft.
+
+## Silence is not idleness
+
+An empty exercise list looks exactly the same whether the user rested or the sync broke.
+Getting this wrong means telling someone to get off the couch two days after a sixty-mile
+ride, which is the fastest uninstall available.
+
+Steps and heart rate arrive passively all day from any worn device. If *nothing* arrived —
+no workouts and no passive data — the feed is broken and the app says so instead of forming
+an opinion. This is not hypothetical: a confirmed ride never reached Health Connect at all
+during testing.
+
+What this cannot catch is a single missing session among many, or work no device recorded.
+A weightlifting session that never reached Garmin, Oura or Health Connect is invisible, and
+the app has to stay humble about the possibility rather than assume its picture is complete.
 
 ## Phases
 
@@ -294,31 +446,33 @@ screen:
 This exists so the computed verdict can be audited against the message that came back,
 and so a wrong-feeling nag can be traced to either bad math or a bad generation.
 
-## Storage implications for Stage 3
+## Storage
 
-Beyond the Activity entity in the original brief:
+Built:
 
-- **CheckIn** — timestamp, window bounds, computed effort totals, target, ratio, verdict
-  direction and magnitude, streak, tone, intensity, prompt sent, message returned. This
-  table is what makes escalation and the transparency view possible.
-- **Profile** — age, sex, weight, resting/max/threshold HR with a flag for whether each
-  was measured or estimated, and selected tone. Captured once in a setup flow.
-- **Goal** — free-text goal, plus an optional distance and optional date. Edited from its
-  own screen, separate from profile setup, since goals change and biological facts mostly
-  do not. No derived load target.
-- **Baseline snapshot** — the user's 28-day load and longest ride at onboarding. Written
-  once. Everything long-term is measured against it.
+- **StoredActivity** — one session, keyed on Health Connect's own record id so re-reads
+  dedupe for free. Carries its load score and every input behind it, so the transparency
+  view can show what a session contributed without recomputing it. Also carries when the
+  app first saw it, which is what makes late syncs count as news.
+- **Profile** — age, sex, resting/max/threshold heart rate with overrides and detection
+  flags, the onboarding baseline, and the last check-in timestamp.
+- **Goal** — the text in the user's own words, its dimension, optional target distance and
+  date, and the starting value that dimension is measured from. Replaced rather than edited,
+  since changing a goal's dimension in place would leave a starting number answering a
+  question nobody asked. Old goals are archived, never deleted.
 
-Per-ride stored load should be recorded alongside the ride so the transparency view can
-show what each ride contributed without recomputing it.
+Not built:
+
+- **CheckIn** — timestamp, the verdict and its inputs, tone, intensity, prompt sent,
+  message returned. Needed for escalation and for auditing a generated message against the
+  verdict behind it. The audit trail currently exists in memory only.
 
 ## Two settings surfaces
 
 Deliberately separate, because they change on different timescales:
 
-1. **Profile setup** — age, sex, weight, tone. Runs once at first launch.
-2. **Goals** — the free-text goal and its derived weekly target. Revisited whenever the
-   user wants.
+1. **Profile setup** — age, sex, heart-rate overrides. Runs once at first launch.
+2. **Goals** — the free-text goal and its dimension. Revisited whenever the user wants.
 
 ## Resolved
 
@@ -340,3 +494,28 @@ Deliberately separate, because they change on different timescales:
   signal computed in the verdict layer.
 - **Windows** — 7-day verdict against a 28-day baseline.
 - **Power** — not used. No power meter, and Health Connect does not carry it.
+- **The goal selects the baseline** rather than supplying a target. Progress is still
+  measured against the user's own past; the goal only decides which measurement counts.
+- **Progress is a fitted curve, not a bucket.** Distance bucketing was built, then deleted:
+  it could only speak about repeated distances and split at arbitrary boundaries. Critical
+  speed and efficiency factor between them cover every session, and cover each other's
+  weaknesses in data.
+- **Ratios need an absolute floor.** ACWR is meaningless when both numbers are small, and
+  telling a two-hour-a-week user to back off is the opposite of what the app is for.
+- **Attribution is unnecessary.** Detect that someone stopped; do not try to work out why.
+- **hrTSS is not an upgrade over HRSS.** The standard formulation squares the ratio of
+  *average* heart rate to threshold, which badly underscores intervals — twenty minutes hard
+  alternating with twenty easy averages out to something moderate. Per-sample summation
+  already handles that correctly and is kept.
+
+## Open
+
+- **sTSS for swims.** The fitted critical speed is exactly the Functional Threshold Speed
+  the pace-based TSS equation needs, which would let a hard swim outscore an easy one
+  instead of every swim receiving a flat zone-3 estimate from duration.
+- **Elevation.** Unread, and the largest remaining source of noise in outdoor cycling pace.
+- **Oura.** Plausibly a strong fit — resting heart rate is its strength and Garmin's gap —
+  but unverified. Nobody has confirmed it writes exercise sessions to Health Connect, and
+  it comes off for lifting.
+- **Yards for swimmers.** Distances are shown in metres because that is what Garmin records,
+  but a 914 m swim is a 1000 yard swim to the person who swam it.

@@ -13,6 +13,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.nagorithm.app.data.LoadModel
 import com.nagorithm.app.data.StoredActivity
+import com.nagorithm.app.format.formatDistance
+import com.nagorithm.app.format.formatDuration
+import com.nagorithm.app.format.formatHeartRate
 
 @Composable
 fun ActivityListSection(activities: List<StoredActivity>) {

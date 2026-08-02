@@ -167,6 +167,28 @@ class HealthConnectManager(private val context: Context) {
     }.getOrDefault(emptyList())
 
     /**
+     * Whether Health Connect is carrying anything at all, workouts aside.
+     *
+     * An empty exercise list is ambiguous in the worst possible way: it looks the same whether the
+     * user rested or the sync died. Steps and heart rate arrive passively all day from any worn
+     * device, so their absence means the pipe is broken — and telling someone to get off the couch
+     * two days after a long ride is how this app gets uninstalled.
+     */
+    suspend fun hasPassiveData(from: Instant, to: Instant): Boolean {
+        val client = clientOrNull() ?: return false
+        val filter = TimeRangeFilter.between(from, to)
+
+        val steps = runCatching {
+            client.readRecords(ReadRecordsRequest(StepsRecord::class, filter)).records
+        }.getOrDefault(emptyList())
+        if (steps.isNotEmpty()) return true
+
+        return runCatching {
+            client.readRecords(ReadRecordsRequest(HeartRateRecord::class, filter)).records
+        }.getOrDefault(emptyList()).isNotEmpty()
+    }
+
+    /**
      * Median rather than latest. Resting HR sits in the denominator of every load score, so a
      * single bad night's reading would skew the whole history.
      */
