@@ -67,10 +67,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             activityDao = db.activityDao(),
             profileDao = db.profileDao(),
             goalDao = db.goalDao(),
+            spokenNagDao = db.spokenNagDao(),
         )
     }
 
     val requiredPermissions: Set<String> = healthConnect.requiredPermissions
+
+    /** Includes background reading, which is optional for syncing but essential for nagging. */
+    val allPermissions: Set<String> = healthConnect.allPermissions
 
     private val _uiState = MutableStateFlow(HealthConnectUiState())
     val uiState: StateFlow<HealthConnectUiState> = _uiState.asStateFlow()

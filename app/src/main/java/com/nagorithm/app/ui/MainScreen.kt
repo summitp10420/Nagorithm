@@ -39,11 +39,13 @@ fun MainScreen(
     goal: Goal?,
     checkIn: CheckIn?,
     requiredPermissions: Set<String>,
+    requestablePermissions: Set<String>,
     onCheck: () -> Unit,
     onSync: () -> Unit,
     onSaveProfile: (Int, Sex, Int?, Int?, Int?) -> Unit,
     onSetGoal: (String, GoalDimension, SportCategory?, Double?, Long?) -> Unit,
     onAcknowledge: () -> Unit,
+    onNagNow: () -> Unit,
     onRecaptureBaseline: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -98,8 +100,9 @@ fun MainScreen(
                 state = state,
                 syncState = syncState,
                 storedActivities = storedActivities,
-                requiredPermissions = requiredPermissions,
+                requiredPermissions = requestablePermissions,
                 onCheck = onCheck,
+                onNagNow = onNagNow,
                 onRecaptureBaseline = onRecaptureBaseline,
             )
         }

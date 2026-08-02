@@ -6,6 +6,8 @@ import com.nagorithm.app.effort.peakHeartRate
 import com.nagorithm.app.health.ExerciseScanDiagnostics
 import com.nagorithm.app.health.HealthConnectManager
 import com.nagorithm.app.health.SportCategory
+import com.nagorithm.app.verdict.Nag
+import com.nagorithm.app.verdict.Verdict
 import com.nagorithm.app.verdict.VerdictEngine
 import kotlinx.coroutines.flow.Flow
 import java.time.Instant
@@ -29,6 +31,7 @@ class ActivityRepository(
     private val activityDao: ActivityDao,
     private val profileDao: ProfileDao,
     private val goalDao: GoalDao,
+    private val spokenNagDao: SpokenNagDao,
 ) {
 
     fun observeActivities(): Flow<List<StoredActivity>> = activityDao.observeActivities()
@@ -37,7 +40,42 @@ class ActivityRepository(
 
     fun observeActiveGoal(): Flow<Goal?> = goalDao.observeActiveGoal()
 
+    fun observeSpokenNags(): Flow<List<SpokenNag>> = spokenNagDao.observeRecent()
+
     suspend fun currentProfile(): Profile? = profileDao.profile()
+
+    suspend fun allActivities(): List<StoredActivity> = activityDao.allActivities()
+
+    suspend fun activeGoal(): Goal? = goalDao.activeGoal()
+
+    suspend fun latestSpokenNag(): SpokenNag? = spokenNagDao.latest()
+
+    /**
+     * Records what was said, so the next verdict knows it has already said it. The schedule's own
+     * reasoning is folded into the audit trail because "why now" is as much a part of a nag being
+     * right as "why this".
+     */
+    suspend fun recordSpokenNag(
+        verdict: Verdict,
+        nag: Nag,
+        notified: Boolean,
+        scheduleReason: String,
+        at: Instant = Instant.now(),
+    ) {
+        spokenNagDao.insert(
+            SpokenNag(
+                spokenAtEpochMillis = at.toEpochMilli(),
+                state = verdict.state,
+                headline = nag.headline,
+                body = nag.body,
+                source = nag.source,
+                reasons = (verdict.reasons + "Spoke now because: $scheduleReason")
+                    .joinToString("\n"),
+                notified = notified,
+            ),
+        )
+        spokenNagDao.trimTo()
+    }
 
     suspend fun saveProfile(profile: Profile) = profileDao.save(profile)
 

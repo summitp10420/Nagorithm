@@ -41,6 +41,7 @@ fun DiagnosticsSection(
     storedActivities: List<StoredActivity>,
     requiredPermissions: Set<String>,
     onCheck: () -> Unit,
+    onNagNow: () -> Unit,
     onRecaptureBaseline: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -70,6 +71,19 @@ fun DiagnosticsSection(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Text(if (state.isChecking) "Checking…" else "Check Health Connect")
+    }
+
+    // Runs the entire unattended path — background sync, verdict, notification — so the thing
+    // that normally happens invisibly every few hours can be watched happening once.
+    OutlinedButton(
+        onClick = {
+            onNagNow()
+            Toast.makeText(context, "Running a check-in in the background…", Toast.LENGTH_SHORT)
+                .show()
+        },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text("Nag me now")
     }
 
     if (state.hasChecked) {

@@ -199,19 +199,16 @@ fun fitCriticalSpeed(key: SportKey, sessions: List<StoredActivity>): CriticalSpe
 
     // A negative reserve means the line is fitting noise rather than physiology. Falling back to
     // a straight average speed is worse in theory and far better than reporting a nonsense curve.
-    val usable = regression != null && regression.speed > 0.0 && regression.reserve >= 0.0
+    val usable = regression?.takeIf { it.speed > 0.0 && it.reserve >= 0.0 }
 
     return CriticalSpeedFit(
         sport = key.sport,
         isIndoor = key.isIndoor,
-        criticalSpeed = if (usable) {
-            regression!!.speed
-        } else {
-            frontier.sumOf { it.meters } / frontier.sumOf { it.seconds }
-        },
-        reserveMeters = if (usable) regression!!.reserve else 0.0,
+        criticalSpeed = usable?.speed
+            ?: (frontier.sumOf { it.meters } / frontier.sumOf { it.seconds }),
+        reserveMeters = usable?.reserve ?: 0.0,
         sampleCount = frontier.size,
-        quality = if (usable) FitQuality.FITTED else FitQuality.APPROXIMATE,
+        quality = if (usable != null) FitQuality.FITTED else FitQuality.APPROXIMATE,
         shortestMeters = frontier.minOf { it.meters },
         longestMeters = frontier.maxOf { it.meters },
     )

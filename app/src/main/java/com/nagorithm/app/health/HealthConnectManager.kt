@@ -33,6 +33,19 @@ class HealthConnectManager(private val context: Context) {
         HealthPermission.getReadPermission(StepsRecord::class),
     )
 
+    /**
+     * Kept out of [requiredPermissions] on purpose. The app is fully usable without it — you just
+     * have to open it — so refusing this should not block syncing, but it does silently reduce a
+     * nag engine to something you have to remember to consult.
+     */
+    val backgroundReadPermission: String = HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND
+
+    /** Everything worth asking for at once, so the user sees a single permission sheet. */
+    val allPermissions: Set<String> = requiredPermissions + backgroundReadPermission
+
+    suspend fun canReadInBackground(): Boolean =
+        runCatching { grantedPermissions().contains(backgroundReadPermission) }.getOrDefault(false)
+
     fun availability(): HealthConnectAvailability =
         when (HealthConnectClient.getSdkStatus(context, PROVIDER_PACKAGE)) {
             HealthConnectClient.SDK_UNAVAILABLE ->
