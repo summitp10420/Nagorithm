@@ -65,6 +65,8 @@ object NagPrompt {
         tone: NagTone,
         picture: List<String> = emptyList(),
         notes: List<String> = emptyList(),
+        /** The raw text of the notes, without the ages [notes] wraps them in. */
+        noteTexts: List<String> = emptyList(),
     ): NagRequest {
         val prompt = buildString {
             appendLine(ROLE)
@@ -111,8 +113,10 @@ object NagPrompt {
         }
 
         // Only the user's own words. Everything the app computed is left out on purpose, so a
-        // recited load figure has nothing to match against and fails the guard.
-        val quotable = listOfNotNull(verdict.goal?.text) + notes
+        // recited load figure has nothing to match against and fails the guard. The note *texts*
+        // rather than the formatted note lines, because the lines carry ages ("11 days ago") that
+        // the app computed, and those would otherwise make their digits quotable too.
+        val quotable = listOfNotNull(verdict.goal?.text) + noteTexts
 
         return NagRequest(prompt, quotable)
     }

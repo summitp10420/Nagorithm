@@ -1,5 +1,15 @@
 package com.nagorithm.app.llm
 
+import com.nagorithm.app.NOW
+import com.nagorithm.app.activity
+import com.nagorithm.app.data.Note
+import com.nagorithm.app.daysAgo
+import com.nagorithm.app.effort.EffortSnapshot
+import com.nagorithm.app.verdict.Nag
+import com.nagorithm.app.verdict.NagSource
+import com.nagorithm.app.verdict.NagTone
+import com.nagorithm.app.verdict.Verdict
+import com.nagorithm.app.verdict.VerdictEngine
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -71,6 +81,56 @@ class NagGuardTest {
         )
 
         assertTrue(result.reason, result.accepted)
+    }
+
+    /** Quoting "sub-20" must not license every figure that happens to share a digit with it. */
+    @Test
+    fun `a goal's figure excuses only itself, not anything containing its digits`() {
+        val result = NagGuard.check(
+            "You were 2% quicker on that ride, and the sub-20 5k is starting to look possible.",
+            listOf("sub-20 5k"),
+        )
+
+        assertFalse(result.accepted)
+        assertTrue(result.reason, result.reason.contains("2"))
+    }
+
+    /**
+     * Notes reach the model wrapped in their age. That age is the app's arithmetic, not the user's
+     * words, so it must not whitelist a figure that happens to match it.
+     */
+    @Test
+    fun `a note's age does not become a quotable figure`() {
+        val recentNotes = listOf(
+            Note(writtenAtEpochMillis = NOW.daysAgo(12).toEpochMilli(), text = "Legs heavy."),
+        )
+        val request = NagPrompt.build(
+            verdict = verdict(),
+            template = Nag("Headline", "Body", NagSource.TEMPLATE),
+            tone = NagTone.DRY,
+            notes = RecentPicture.notes(recentNotes, NOW),
+            noteTexts = RecentPicture.noteTexts(recentNotes),
+        )
+
+        assertTrue(request.prompt.contains("12 days ago"))
+        assertFalse(
+            NagGuard.check(
+                "You have been 12% slower since your legs went heavy, which is no surprise.",
+                request.quotable,
+            ).accepted,
+        )
+    }
+
+    private fun verdict(): Verdict {
+        val activities = listOf(activity("a", daysAgo = 2), activity("b", daysAgo = 5))
+        return VerdictEngine.evaluate(
+            activities = activities,
+            snapshot = EffortSnapshot.from(activities, NOW),
+            goal = null,
+            lastCheckInEpochMillis = null,
+            feedAlive = true,
+            now = NOW,
+        )
     }
 
     @Test

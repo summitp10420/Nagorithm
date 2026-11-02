@@ -90,14 +90,14 @@ class NagWorker(context: Context, params: WorkerParameters) : CoroutineWorker(co
         if (!decision.speak) return Result.success()
 
         val key = ApiKeyStore(applicationContext).geminiKey
+        val recentNotes =
+            repository.recentNotes(now.minus(RecentPicture.NOTE_WINDOW_DAYS, ChronoUnit.DAYS))
         val written = NagWriter(key?.let(::GeminiClient)).write(
             verdict = verdict,
             tone = profile.tone,
             picture = RecentPicture.build(activities, now),
-            notes = RecentPicture.notes(
-                repository.recentNotes(now.minus(RecentPicture.NOTE_WINDOW_DAYS, ChronoUnit.DAYS)),
-                now,
-            ),
+            notes = RecentPicture.notes(recentNotes, now),
+            noteTexts = RecentPicture.noteTexts(recentNotes),
         )
         val notified = NagNotifier.post(applicationContext, written.nag)
 

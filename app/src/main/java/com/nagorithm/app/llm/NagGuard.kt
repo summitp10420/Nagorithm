@@ -40,12 +40,12 @@ object NagGuard {
         if (text.length < MIN_LENGTH) return GuardResult(false, "Too short to be a real answer.")
         if (text.length > MAX_LENGTH) return GuardResult(false, "Ran long past what was asked for.")
 
-        val theirWords = quotable.joinToString(" ")
-        val figures = FIGURE.findAll(text)
-            .map { it.value.trimEnd(*TRIMMED.toCharArray()) }
-            .filterNot { theirWords.contains(it) }
+        // Whole figures only. A substring test would let a goal of "sub-20 5k" excuse a 2, a 0 and
+        // a 5 as well, which together cover most of what a model might invent.
+        val theirFigures = quotable.flatMap(::figuresIn).toSet()
+        val figures = figuresIn(text)
+            .filterNot { it in theirFigures }
             .distinct()
-            .toList()
 
         return if (figures.isEmpty()) {
             GuardResult(true, "Written in words, with no figures of its own.")
@@ -56,4 +56,7 @@ object NagGuard {
             )
         }
     }
+
+    private fun figuresIn(text: String): List<String> =
+        FIGURE.findAll(text).map { it.value.trimEnd(*TRIMMED.toCharArray()) }.toList()
 }

@@ -301,10 +301,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val balance = trainingBalance(activities, now)
 
                 val picture = RecentPicture.build(activities, now)
-                val notes = RecentPicture.notes(
-                    repository.recentNotes(now.minus(RecentPicture.NOTE_WINDOW_DAYS, ChronoUnit.DAYS)),
-                    now,
-                )
+                val recentNotes =
+                    repository.recentNotes(now.minus(RecentPicture.NOTE_WINDOW_DAYS, ChronoUnit.DAYS))
+                val notes = RecentPicture.notes(recentNotes, now)
+                val noteTexts = RecentPicture.noteTexts(recentNotes)
 
                 val writer = NagWriter(apiKeyStore.geminiKey?.let(::GeminiClient))
                 val tone = profile?.tone ?: NagTone.SNARKY
@@ -320,7 +320,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         rampSignal = signal,
                         balance = balance,
                     )
-                    val written = writer.write(verdict, tone, picture, notes)
+                    val written = writer.write(verdict, tone, picture, notes, noteTexts)
 
                     SignalCandidate(
                         signal = signal,

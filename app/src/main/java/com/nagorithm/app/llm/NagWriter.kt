@@ -23,11 +23,12 @@ class NagWriter(private val client: GeminiClient?) {
         tone: NagTone,
         picture: List<String> = emptyList(),
         notes: List<String> = emptyList(),
+        noteTexts: List<String> = emptyList(),
     ): WritingOutcome {
         val template = NagTemplates.render(verdict)
         val model = client ?: return WritingOutcome(template, "No API key, so this is a template.")
 
-        val request = NagPrompt.build(verdict, template, tone, picture, notes)
+        val request = NagPrompt.build(verdict, template, tone, picture, notes, noteTexts)
 
         val written = model.write(request.prompt).getOrElse { failure ->
             return WritingOutcome(

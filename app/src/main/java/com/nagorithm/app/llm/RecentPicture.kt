@@ -52,9 +52,7 @@ object RecentPicture {
 
         return buildList {
             add("WHAT THEY HAVE SAID ABOUT THEMSELVES, most recent first:")
-            notes
-                .sortedByDescending { it.writtenAtEpochMillis }
-                .take(MAX_NOTES)
+            shown(notes)
                 .forEach { note ->
                     val days = ChronoUnit.DAYS.between(
                         Instant.ofEpochMilli(note.writtenAtEpochMillis),
@@ -71,6 +69,16 @@ object RecentPicture {
     }
 
     private const val MAX_NOTES = 20
+
+    /**
+     * The text of exactly the notes [notes] shows, without the ages wrapped around them. These
+     * are the user's own words, so digits in them may be quoted back; the ages are the app's
+     * arithmetic and must not become a whitelist for figures the model makes up.
+     */
+    fun noteTexts(notes: List<Note>): List<String> = shown(notes).map { it.text }
+
+    private fun shown(notes: List<Note>): List<Note> =
+        notes.sortedByDescending { it.writtenAtEpochMillis }.take(MAX_NOTES)
 
     fun build(activities: List<StoredActivity>, now: Instant = Instant.now()): List<String> {
         val today = now.atZone(ZoneId.systemDefault()).toLocalDate()
