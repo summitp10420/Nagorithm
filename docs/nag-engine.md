@@ -2,10 +2,10 @@
 
 Design notes and the reasoning behind them.
 
-**Status.** Effort scoring, goals, the progress model and the local verdict are built and
-running on a device. The wording layer is still templates; tone selection, the LLM call,
-background sync and notifications are not built. Sections below are marked where they
-describe intent rather than code.
+**Status.** Effort scoring, goals, the progress model, the local verdict, tone selection,
+the LLM call, background sync and notifications are all built and running on a device. Phases,
+streaks and intensity are not. Sections below are marked where they describe intent rather
+than code. [overview.md](overview.md) is the more current walkthrough.
 
 ## Principle
 
@@ -509,13 +509,15 @@ Deliberately separate, because they change on different timescales:
   *average* heart rate to threshold, which badly underscores intervals — twenty minutes hard
   alternating with twenty easy averages out to something moderate. Per-sample summation
   already handles that correctly and is kept.
-- **The model rewords, and is given nothing to reason from.** It receives the finished
-  verdict, the goal text and the audit-trail lines — never sessions. That is a privacy
-  property and a correctness one: a model handed only a conclusion has no material from
-  which to form a different conclusion.
-- **Fabricated numbers fail closed.** Every figure in a reply must trace to one the verdict
-  supplied, rounding aside. One caught invention would discredit every honest number the app
-  has ever shown, so a rejected answer falls back to the template and says so in the audit.
+- **The model rewords a settled verdict.** It receives the finished verdict, the goal text,
+  the audit-trail lines, and, so it has something worth observing, the last 42 days of
+  sessions and the user's recent notes. It chooses what to mention but never what is true.
+  This superseded an earlier rule that it was never shown sessions; the privacy cost of that
+  change is stated in the README.
+- **Fabricated numbers fail closed.** The reply may contain no figures at all, except whole
+  figures from the user's own goal or notes. One caught invention would discredit every honest
+  number the app has ever shown, so a rejected answer falls back to the template and says so
+  in the audit.
 - **The key is not a dependency.** Without one the app is fully functional and makes no
   network call. The model is an upgrade to the voice.
 - **The card shows what was said, not a fresh rendering.** Recomputing the wording on open

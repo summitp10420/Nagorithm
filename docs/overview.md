@@ -22,7 +22,9 @@ them or says nothing at all.
 arithmetic before any network call exists. An LLM is handed a settled conclusion and asked to
 phrase it. It cannot promote a bad week to a good one.
 
-v1 is local-only: no backend, no account, no cloud storage. Health data never leaves the device.
+v1 is local-only: no backend, no account, no cloud storage. Without an API key, health data never
+leaves the device; with one, the recent sessions and notes described under "Stage three" are sent
+to the user's own model provider.
 
 ---
 

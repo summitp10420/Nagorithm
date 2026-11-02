@@ -27,15 +27,27 @@ See [docs/nag-engine.md](docs/nag-engine.md) for the design and the reasoning be
 
 ## The model chooses words, never meaning
 
-The verdict is decided before a language model is involved, and the model is handed the
-finished conclusion rather than the data behind it. It sees the verdict state, your goal in
-your own words, the audit-trail reason lines and a plain draft — never a session, a
-timestamp or a heart rate. Health data does not leave the device.
+The verdict is decided before a language model is involved, and the model is handed it as a
+settled conclusion that it may phrase but not change.
 
-Every figure in the reply is then checked against the figures the verdict supplied. Rounding
-is allowed; anything else sends the whole message back and the template goes out instead,
-with the rejection recorded in the audit trail. A fabricated statistic is worse than no
-message at all, because it is indistinguishable from the real ones sitting beside it.
+**What leaves the device when a key is set.** To have something worth observing, the model is
+also shown recent context, sent to Google's Gemini API under your own key:
+
+- the verdict state, the audit-trail reason lines and a plain draft
+- your goal, in your own words
+- the last 42 days of sessions: day, sport, distance, duration, pace, average heart rate and
+  load score
+- up to 20 of your notes from the last 180 days, with how long ago each was written
+
+Nothing else is sent: no raw heart-rate samples, no location, no resting heart rate, no profile.
+Without a key nothing leaves the device at all. Check Google's terms for your key's tier on how
+they may use what is sent.
+
+The reply must contain no figures at all. Any digit that is not a whole figure from your own
+goal or notes sends the whole message back and the template goes out instead, with the
+rejection recorded in the audit trail. A fabricated statistic is worse than no message at all,
+because it is indistinguishable from the real ones sitting beside it. Figures spelled out in
+words are forbidden by the prompt but not caught by the check.
 
 Every path produces a nag. No key, no signal, a retired model, a rejected answer — the
 template ships and the app works having made no network call.
@@ -77,7 +89,7 @@ goals, and `verdict` decides everything the wording layer is later allowed to sa
 
 ### Database
 
-Room, currently at version 6, with schemas exported to `app/schemas` and real migrations
+Room, currently at version 7, with schemas exported to `app/schemas` and real migrations
 from version 3 onward. Destructive migration is deliberately restricted to versions 1 and 2:
 past those, the database holds activity history reaching further back than Health Connect
 will re-serve, plus onboarding baselines that are written once and cannot be recomputed.
