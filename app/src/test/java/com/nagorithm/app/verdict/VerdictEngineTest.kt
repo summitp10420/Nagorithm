@@ -207,6 +207,26 @@ class VerdictEngineTest {
     }
 
     @Test
+    fun `old news does not hide a lapse from someone who never opens the app`() {
+        // Acknowledged once a month ago and read only notifications since, so every session in
+        // the history is still "news" — but the newest is nine days old.
+        val verdict = evaluate(history(), lastCheckInDaysAgo = 30)
+
+        assertTrue(verdict.hasNews)
+        assertEquals(VerdictState.IDLE, verdict.state)
+        assertTrue(verdict.reasons.any { it.contains("older than the recovery window") })
+    }
+
+    @Test
+    fun `a late sync inside the recovery window is still talked about, not called idle`() {
+        val late = activity("late", daysAgo = 6, firstSeenDaysAgo = 0)
+        val verdict = evaluate(history() + late, lastCheckInDaysAgo = 3)
+
+        assertEquals(DetrainingBand.FRESH, verdict.detraining)
+        assertTrue(verdict.state != VerdictState.IDLE)
+    }
+
+    @Test
     fun `detraining tolerance shrinks as there is more to lose`() {
         assertEquals(DetrainingBand.FRESH, VerdictEngine.detrainingBand(4, loadPerWeek = 50.0))
         assertEquals(DetrainingBand.DRIFTING, VerdictEngine.detrainingBand(4, loadPerWeek = 500.0))

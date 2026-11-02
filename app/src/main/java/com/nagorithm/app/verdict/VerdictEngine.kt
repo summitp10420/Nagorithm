@@ -99,14 +99,20 @@ object VerdictEngine {
             (news.isNotEmpty() && efficiency != null && efficiency.isMeaningful &&
                 efficiency.improvementFraction > 0)
 
+        // Absence outranks news. "News" runs from the last time the user acknowledged a verdict in
+        // the app, and someone who only ever reads the notifications may not have done that in
+        // weeks — so one old session would otherwise count as news indefinitely and hold the
+        // verdict at steady while they detrain. The band is measured from the newest session
+        // itself, so past the slack it is true whatever the news window says. A session that
+        // synced late but happened inside the slack still leaves the band fresh and still counts.
         val state = when {
             feedSilent -> VerdictState.FEED_SILENT
             activities.size < 2 -> VerdictState.COLD_START
             ramping -> VerdictState.RAMPING_HARD
+            band != DetrainingBand.FRESH -> VerdictState.IDLE
             improving -> VerdictState.PROGRESSING
             news.isNotEmpty() -> VerdictState.STEADY
-            band == DetrainingBand.FRESH -> VerdictState.RESTING
-            else -> VerdictState.IDLE
+            else -> VerdictState.RESTING
         }
 
         return Verdict(
@@ -334,6 +340,13 @@ object VerdictEngine {
                     "HRSS/week that counts as ${band.name.lowercase()}.",
             )
         } ?: add("Nothing stored at all.")
+
+        if (state == VerdictState.IDLE && news.isNotEmpty()) {
+            add(
+                "The new session(s) are older than the recovery window, so the time since the " +
+                    "last one decides the verdict rather than the sessions themselves.",
+            )
+        }
 
         if (snapshot.isColdStart) {
             add(
