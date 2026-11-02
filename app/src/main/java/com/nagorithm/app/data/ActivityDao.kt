@@ -23,9 +23,6 @@ interface ActivityDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertNew(activities: List<StoredActivity>): List<Long>
 
-    @Query("SELECT MAX(peakHeartRateBpm) FROM activities WHERE userId = :userId")
-    suspend fun highestPeakHeartRate(userId: String = LOCAL_USER_ID): Long?
-
     /**
      * Load is recomputed on every sync rather than written once, because it depends on profile
      * heart-rate values that can change. Kept separate from insert so a re-sync does not reset

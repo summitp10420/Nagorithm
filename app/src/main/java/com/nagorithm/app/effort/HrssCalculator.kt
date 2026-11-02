@@ -4,6 +4,7 @@ import com.nagorithm.app.data.LoadModel
 import com.nagorithm.app.data.LoadScore
 import com.nagorithm.app.data.Profile
 import com.nagorithm.app.data.Sex
+import com.nagorithm.app.data.StoredActivity
 import com.nagorithm.app.health.HeartRateSample
 import com.nagorithm.app.health.SportCategory
 import java.time.Duration
@@ -128,3 +129,26 @@ fun List<HeartRateSample>.peakHeartRate(percentile: Double = 0.99): Long? {
     val index = ((sorted.size - 1) * percentile).roundToInt().coerceIn(0, sorted.lastIndex)
     return sorted[index]
 }
+
+/**
+ * Below this many samples the 99th percentile rounds to the last sample, so the "high percentile"
+ * is just the raw maximum and a single spike passes straight through.
+ */
+const val MINIMUM_PEAK_SAMPLES = 100
+
+/**
+ * Max heart rate as observed across the whole stored history, counting only sessions whose peak
+ * can be trusted.
+ *
+ * This is a running maximum and max is never revised downward, so one bad reading is permanent:
+ * it raises max, raises the threshold derived from it, and quietly deflates every load score from
+ * then on. Swims are excluded for the same reason load scoring ignores their samples — a watch
+ * that cannot read underwater still emits stray values — and so is any session too sparsely
+ * sampled for the percentile to discard a spike.
+ */
+fun detectedMaxHeartRate(activities: List<StoredActivity>): Int? =
+    activities
+        .filter { it.sport != SportCategory.SWIMMING && it.hrSampleCount >= MINIMUM_PEAK_SAMPLES }
+        .mapNotNull { it.peakHeartRateBpm }
+        .maxOrNull()
+        ?.toInt()

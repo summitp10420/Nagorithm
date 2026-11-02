@@ -2,6 +2,7 @@ package com.nagorithm.app.data
 
 import com.nagorithm.app.effort.EffortSnapshot
 import com.nagorithm.app.effort.HrssCalculator
+import com.nagorithm.app.effort.detectedMaxHeartRate
 import com.nagorithm.app.effort.peakHeartRate
 import com.nagorithm.app.health.ExerciseScanDiagnostics
 import com.nagorithm.app.health.HealthConnectManager
@@ -161,7 +162,7 @@ class ActivityRepository(
             from = to.minus(RESTING_HR_WINDOW_DAYS, ChronoUnit.DAYS),
             to = to,
         )
-        val maxHr = activityDao.highestPeakHeartRate()?.toInt()
+        val maxHr = detectedMaxHeartRate(activityDao.allActivities())
         profileDao.updateDetectedHeartRates(restingHr = restingHr, maxHr = maxHr)
 
         // Loads are recomputed for every fetched session, not just new ones, so a corrected
